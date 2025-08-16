@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}QR - {{ asistente.nombre }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card" style="background: #000; border: 2px solid #00ff00; color: #00ff00;">
+                <div class="card-header text-center">
+                    <h4>CÓDIGO QR GENERADO</h4>
+                </div>
+                <div class="card-body text-center">
+                    <h5>{{ asistente.nombre }}</h5>
+                    <p><strong>CC:</strong> {{ asistente.cc }}</p>
+                    <p><strong>Categoría:</strong> {{ asistente.categoria.nombre }}</p>
+                    <p><strong>Consumos:</strong> {{ asistente.consumos_disponibles }}</p>
+                    
+                    {% if asistente.qr_image %}
+                        <div class="my-4">
+                            <img src="{{ asistente.qr_image.url }}" alt="QR Code" class="img-fluid" style="max-width: 300px;">
+                        </div>
+                        <p><small>Código: {{ asistente.codigo_qr }}</small></p>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            Error generando QR. Intenta nuevamente.
+                        </div>
+                    {% endif %}
+                    
+                    <div class="mt-3">
+                        <a href="{% url 'core:dashboard' %}" class="btn btn-success">
+                            <i class="fas fa-arrow-left"></i> VOLVER AL DASHBOARD
+                        </a>
+                        {% if asistente.qr_image %}
+                        <a href="{{ asistente.qr_image.url }}" download="qr_{{ asistente.cc }}.png" class="btn btn-primary">
+                            <i class="fas fa-download"></i> DESCARGAR QR
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

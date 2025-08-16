@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar {{ asistente.nombre }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card" style="background: #000; border: 2px solid #00ff00; color: #00ff00;">
+                <div class="card-header text-center">
+                    <h4>EDITAR ASISTENTE</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label">NOMBRE COMPLETO:</label>
+                            <input type="text" name="nombre" class="form-control" value="{{ asistente.nombre }}" required style="background: #1a1a1a; border: 1px solid #00ff00; color: #00ff00;">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">CÉDULA:</label>
+                            <input type="text" class="form-control" value="{{ asistente.cc }}" disabled style="background: #333; border: 1px solid #666; color: #999;">
+                            <small class="text-muted">La cédula no se puede modificar</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">TELÉFONO:</label>
+                            <input type="text" name="numero" class="form-control" value="{{ asistente.numero }}" required style="background: #1a1a1a; border: 1px solid #00ff00; color: #00ff00;">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">CORREO:</label>
+                            <input type="email" name="correo" class="form-control" value="{{ asistente.correo }}" required style="background: #1a1a1a; border: 1px solid #00ff00; color: #00ff00;">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">CATEGORÍA:</label>
+                            <select name="categoria" class="form-control" required style="background: #1a1a1a; border: 1px solid #00ff00; color: #00ff00;">
+                                {% for categoria in categorias %}
+                                <option value="{{ categoria.pk }}" {% if categoria.pk == asistente.categoria.pk %}selected{% endif %}>
+                                    {{ categoria.nombre }} - {{ categoria.consumos_incluidos }} consumos
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'core:dashboard' %}" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> CANCELAR
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> GUARDAR CAMBIOS
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
