@@ -2,47 +2,61 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
-import socket # <--- Agregado
+import socket
 
-
+def get_local_ip():
+    """
+    Obtiene la IP local de la máquina de una forma más fiable.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # No es necesario que la IP sea alcanzable, solo se usa para encontrar la interfaz
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
 
 def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'evento.settings')
 
-    # --- INICIO DEL CÓDIGO AGREGADO ---
-    # Muestra la IP local al iniciar el servidor de desarrollo
-    if 'runserver' in sys.argv:
-        try:
-            # Obtiene el nombre del host y la dirección IP local
-            hostname = socket.gethostname()
-            local_ip = socket.gethostbyname(hostname)
-            
-            # Intenta encontrar el puerto en los argumentos del comando
-            # Si no lo encuentra, usa el puerto por defecto '8000'
-            port = '8000'
-            if len(sys.argv) > 2:
-                # Si se especifica como 'manage.py runserver 0.0.0.0:8080'
-                if ':' in sys.argv[2]:
-                    port = sys.argv[2].split(':')[1]
-                # Si se especifica como 'manage.py runserver 8080'
-                elif sys.argv[2].isdigit():
-                    port = sys.argv[2]
+    # --- CÓDIGO ADAPTADO PARA MOSTRAR IP CON HTTPS ---
+    is_runserver = 'runserver' in sys.argv
+    is_runserver_plus = 'runserver_plus' in sys.argv
 
+    if is_runserver or is_runserver_plus:
+        try:
+            local_ip = get_local_ip()
+            # Intenta adivinar el puerto de los argumentos, si no, usa 8000 por defecto
+            port = '8000'
+            for arg in sys.argv:
+                if ':' in arg and arg.split(':')[-1].isdigit():
+                    port = arg.split(':')[-1]
+                    break
+                elif arg.isdigit(): # Si el puerto se pasa como un argumento separado
+                    port = arg
+                    break
+
+            # Determina si se usa HTTPS para mostrar el enlace correcto
+            protocol = "https" if is_runserver_plus else "http"
+            
             print("\n✅ ¡Servidor de desarrollo listo!")
-            print(f"   ✓ Accesible en tu red local en: http://{local_ip}:{port}/")
-            print(f"   ✓ Accesible localmente en:     http://127.0.0.1:{port}/")
+            print(f"   ✓ Para acceder desde otros dispositivos, usa: {protocol}://{local_ip}:{port}/")
+            print(f"   ✓ O localmente en tu computador:             http://127.0.0.1:{port}/")
             print("   (Presiona CTRL+C para detener)\n")
 
-            # Asegura que el servidor sea accesible desde la red local
-            # si se ejecuta solo con 'python manage.py runserver'
-            if len(sys.argv) == 2 and sys.argv[1] == 'runserver':
-                 sys.argv.append('0.0.0.0:8000')
+            # Si no se especifica una dirección, hace que el servidor sea accesible en la red
+            address_provided = any(':' in arg or arg.replace('.', '').isdigit() for arg in sys.argv[2:] if not arg.startswith('-'))
+            if not address_provided:
+                cmd_index = sys.argv.index('runserver_plus' if is_runserver_plus else 'runserver')
+                sys.argv.insert(cmd_index + 1, '0.0.0.0:8000')
 
         except Exception as e:
-            print(f"\n⚠️  No se pudo obtener la IP local: {e}")
-            print("   Asegúrate de estar conectado a una red.\n")
-    # --- FIN DEL CÓDIGO AGREGADO ---
+            print(f"\n⚠️  No se pudo obtener la IP local: {e}\n")
+    # --- FIN DEL CÓDIGO ADAPTADO ---
 
     try:
         from django.core.management import execute_from_command_line
