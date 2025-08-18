@@ -119,22 +119,141 @@ class Asistente(models.Model):
         if not self.qr_image:
             self.generar_qr()
 
+    # En core/models.py - Solo reemplaza el método generar_qr() existente
+
     def generar_qr(self):
-        """Genera la imagen QR para el asistente"""
+        """Genera la imagen QR para el asistente con logo DMT.png en el centro"""
+        import qrcode
+        from io import BytesIO
+        from django.core.files import File
+        from PIL import Image, ImageDraw, ImageFont
+        import os
+        from django.conf import settings
+        
+        # Generar QR básico con mayor corrección de errores para soportar logo central
         qr = qrcode.QRCode(
             version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            error_correction=qrcode.constants.ERROR_CORRECT_H,  # Alta corrección para logo central
             box_size=10,
             border=4,
         )
         qr.add_data(self.codigo_qr)
         qr.make(fit=True)
 
-        img = qr.make_image(fill_color="black", back_color="white")
+        # Crear imagen QR con colores personalizados
+        qr_img = qr.make_image(
+            fill_color="#1a4a1a",      # Verde oscuro para el QR
+            back_color="#f0f8f0"       # Fondo verde muy claro
+        )
+        qr_img = qr_img.convert("RGBA")
+        
+        # Redimensionar QR a un tamaño más grande
+        qr_size = 400
+        qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
+        
+        # === LOGO DMT.PNG EN EL CENTRO DEL QR ===
+        try:
+            # Buscar DMT.png en diferentes ubicaciones posibles
+            possible_paths = [
+                os.path.join(settings.BASE_DIR, 'static', 'images', 'DMT.png'),
+                os.path.join(settings.BASE_DIR, 'static', 'DMT.png'),
+                os.path.join(settings.STATICFILES_DIRS[0] if settings.STATICFILES_DIRS else '', 'images', 'DMT.png'),
+                os.path.join(settings.STATICFILES_DIRS[0] if settings.STATICFILES_DIRS else '', 'DMT.png'),
+            ]
+            
+            watermark_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    watermark_path = path
+                    break
+            
+            if watermark_path:
+                # Cargar logo
+                logo = Image.open(watermark_path).convert("RGBA")
+                
+                # Calcular tamaño del logo (aproximadamente 20% del QR)
+                logo_size = int(qr_size * 0.2)  # 20% del tamaño del QR
+                logo = logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+                
+                # Crear fondo circular verde oscuro para el logo
+                circle_size = logo_size + 20  # Un poco más grande que el logo
+                circle_img = Image.new('RGBA', (circle_size, circle_size), (0, 0, 0, 0))
+                circle_draw = ImageDraw.Draw(circle_img)
+                
+                # Dibujar círculo con borde
+                circle_draw.ellipse([0, 0, circle_size-1, circle_size-1], 
+                                fill=(26, 74, 26, 255),      # Verde oscuro de fondo
+                                outline=(240, 248, 240, 255), # Borde claro
+                                width=3)
+                
+                # Calcular posición central
+                qr_center_x = qr_size // 2
+                qr_center_y = qr_size // 2
+                
+                # Posición del círculo (centrado)
+                circle_x = qr_center_x - circle_size // 2
+                circle_y = qr_center_y - circle_size // 2
+                
+                # Posición del logo (centrado dentro del círculo)
+                logo_x = qr_center_x - logo_size // 2
+                logo_y = qr_center_y - logo_size // 2
+                
+                # Pegar el círculo de fondo primero
+                qr_img.paste(circle_img, (circle_x, circle_y), circle_img)
+                
+                # Pegar el logo encima del círculo
+                qr_img.paste(logo, (logo_x, logo_y), logo)
+                
+                print(f"Logo DMT.png aplicado en el centro desde: {watermark_path}")
+            else:
+                print("DMT.png no encontrado, QR sin logo central")
+                
+        except Exception as e:
+            print(f"Error cargando DMT.png: {e}, QR sin logo central")
+        
+        # Crear imagen final con información adicional abajo
+        final_height = qr_size + 80  # Espacio extra para información
+        final_img = Image.new('RGBA', (qr_size, final_height), (240, 248, 240, 255))  # Fondo verde claro
+        
+        # Pegar QR en la parte superior
+        final_img.paste(qr_img, (0, 0))
+        
+        # Agregar información del asistente abajo
+        draw = ImageDraw.Draw(final_img)
+        
+        try:
+            # Intentar usar fuente personalizada
+            font_title = ImageFont.truetype("arial.ttf", 18) if os.name == 'nt' else ImageFont.load_default()
+            font_info = ImageFont.truetype("arial.ttf", 12) if os.name == 'nt' else ImageFont.load_default()
+        except:
+            font_title = ImageFont.load_default()
+            font_info = ImageFont.load_default()
+        
+        # Posiciones para el texto
+        y_start = qr_size + 10
+        
+        # Información del evento
+        evento_text = f"DMT 69 - {self.nombre[:20]}{'...' if len(self.nombre) > 20 else ''}"
+        categoria_text = f"Categoría: {self.categoria.nombre} | Consumos: {self.consumos_disponibles}"
+        
+        # Centrar texto del evento
+        text_width = draw.textlength(evento_text, font=font_title)
+        x_center = (qr_size - text_width) // 2
+        draw.text((x_center, y_start), evento_text, fill=(26, 74, 26, 255), font=font_title)
+        
+        # Centrar texto de categoría
+        
+        # Código QR pequeño abajo
+        
+        # Convertir a RGB para guardar
+        final_img = final_img.convert('RGB')
+        
+        # Guardar en buffer
         buffer = BytesIO()
-        img.save(buffer, "PNG")
+        final_img.save(buffer, 'PNG', quality=95)
         buffer.seek(0)
 
+        # Guardar en el modelo
         filename = f"qr_{self.cc}.png"
         self.qr_image.save(filename, File(buffer), save=False)
         self.save(update_fields=["qr_image"])

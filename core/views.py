@@ -10,6 +10,8 @@ from django.db import transaction
 from .models import Asistente, Categoria, PerfilUsuario
 from .decorators import entrada_o_admin, solo_entrada, ajax_login_required
 
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+
 
 # ===== DASHBOARD PRINCIPAL =====
 @login_required
@@ -53,6 +55,7 @@ def dashboard_entrada(request):
 
 
 # ===== LISTA ASISTENTES =====
+# En core/views.py - Reemplaza la función lista_asistentes existente
 @entrada_o_admin
 def lista_asistentes(request):
     asistentes = Asistente.objects.all().order_by("-fecha_registro")
@@ -70,18 +73,44 @@ def lista_asistentes(request):
     elif estado == "pendientes":
         asistentes = asistentes.filter(ha_ingresado=False)
 
+    # Paginación
+    items_por_pagina = int(request.GET.get('items', 10))  # Por defecto 10
+    if items_por_pagina not in [10, 25, 50, 100]:
+        items_por_pagina = 10
+        
+    paginator = Paginator(asistentes, items_por_pagina)
+    page = request.GET.get('page', 1)
+    
+    try:
+        asistentes_paginados = paginator.page(page)
+    except PageNotAnInteger:
+        asistentes_paginados = paginator.page(1)
+    except EmptyPage:
+        asistentes_paginados = paginator.page(paginator.num_pages)
+
     # Si es una petición AJAX, devolver solo la tabla
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        context = {"asistentes": asistentes}
+        context = {
+            "asistentes": asistentes_paginados,  # Ahora es paginado
+            "paginator": paginator,
+            "page_obj": asistentes_paginados,
+            "total": paginator.count,
+            "showing_start": asistentes_paginados.start_index(),
+            "showing_end": asistentes_paginados.end_index(),
+        }
         return render(request, "core/tabla_asistentes.html", context)
 
     context = {
-        "asistentes": asistentes,
-        "total": asistentes.count(),
+        "asistentes": asistentes_paginados,
+        "paginator": paginator,
+        "page_obj": asistentes_paginados,
+        "total": paginator.count,
         "buscar": buscar,
         "estado": estado,
+        "items_por_pagina": items_por_pagina,
     }
     return render(request, "core/lista_asistentes.html", context)
+
 
 
 # ===== CREAR ASISTENTE =====
