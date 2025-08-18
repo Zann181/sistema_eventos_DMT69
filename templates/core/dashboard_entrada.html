@@ -41,6 +41,17 @@
             background: #0066ff;
             border-color: #0066ff;
         }
+        .btn-excel {
+            background: #228B22;
+            border-color: #228B22;
+            color: #fff;
+            font-weight: bold;
+        }
+        .btn-excel:hover {
+            background: #32CD32;
+            border-color: #32CD32;
+            color: #fff;
+        }
         .form-control {
             background: #1a1a1a;
             border: 1px solid #00ff00;
@@ -175,20 +186,26 @@
                     <!-- TAB 2: LISTA ASISTENTES -->
                     <div class="tab-pane fade" id="lista" role="tabpanel">
                         <div class="row mb-3">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <input type="text" id="filtro-buscar" class="form-control" placeholder="Buscar por nombre o cédula...">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <select id="filtro-estado" class="form-control">
                                     <option value="">Todos</option>
                                     <option value="ingresados">Ingresaron</option>
                                     <option value="pendientes">Pendientes</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
-                                <button class="btn btn-primary" onclick="cargarLista()">
+                            <div class="col-md-6">
+                                <button class="btn btn-primary me-2" onclick="cargarLista()">
                                     <i class="fas fa-sync"></i> ACTUALIZAR
                                 </button>
+
+                
+                                <!-- REEMPLAZA el botón Excel con este -->
+                                <a href="{% url 'core:exportar_excel' %}" class="btn btn-excel" target="_blank">
+                                    <i class="fas fa-file-excel"></i> DESCARGAR EXCEL
+                                </a>
                             </div>
                         </div>
                         <div id="lista-asistentes">
@@ -317,6 +334,150 @@
     <script>
         let html5QrCode = null;
         let isScanning = false;
+
+        // ===== FUNCIONES GLOBALES PARA PAGINACIÓN =====
+        window.irAPagina = function(pagina) {
+            const buscar = document.getElementById('filtro-buscar') ? document.getElementById('filtro-buscar').value : '';
+            const estado = document.getElementById('filtro-estado') ? document.getElementById('filtro-estado').value : '';
+            const items = document.getElementById('items-selector') ? document.getElementById('items-selector').value : 10;
+            
+            let url = '{% url "core:lista_asistentes" %}';
+            let params = new URLSearchParams();
+            
+            if (buscar) params.append('buscar', buscar);
+            if (estado) params.append('estado', estado);
+            if (items) params.append('items', items);
+            params.append('page', pagina);
+            
+            if (params.toString()) url += '?' + params.toString();
+            
+            fetch(url, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('lista-asistentes').innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('lista-asistentes').innerHTML = 
+                    '<div class="alert alert-danger">Error cargando página</div>';
+            });
+        };
+
+        window.cambiarItems = function(items) {
+            const buscar = document.getElementById('filtro-buscar') ? document.getElementById('filtro-buscar').value : '';
+            const estado = document.getElementById('filtro-estado') ? document.getElementById('filtro-estado').value : '';
+            
+            let url = '{% url "core:lista_asistentes" %}';
+            let params = new URLSearchParams();
+            
+            if (buscar) params.append('buscar', buscar);
+            if (estado) params.append('estado', estado);
+            params.append('items', items);
+            params.append('page', 1); // Volver a página 1 al cambiar items
+            
+            if (params.toString()) url += '?' + params.toString();
+            
+            fetch(url, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('lista-asistentes').innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('lista-asistentes').innerHTML = 
+                    '<div class="alert alert-danger">Error cargando lista</div>';
+            });
+        };
+
+        // ===== OTRAS FUNCIONES GLOBALES =====
+        window.marcarIngreso = function(cc) {
+            if (!confirm('¿Marcar este asistente como ingresado?')) return;
+            
+            fetch('{% url "core:marcar_ingreso" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ cc: cc })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    cargarLista(); // Recargar lista
+                    // Actualizar stats
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        };
+
+        window.eliminarAsistente = function(cc) {
+            if (!confirm('¿ELIMINAR este asistente permanentemente?')) return;
+            
+            fetch('{% url "core:eliminar_asistente" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ cc: cc })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    cargarLista(); // Recargar lista
+                    location.reload(); // Actualizar stats
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        };
+
+        window.verQR = function(cc) {
+            fetch(`{% url "core:obtener_qr" "PLACEHOLDER" %}`.replace('PLACEHOLDER', cc))
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const modalBody = `
+                        <div class="text-center">
+                            <h4>${data.asistente.nombre}</h4>
+                            <p><strong>CC:</strong> ${data.asistente.cc}</p>
+                            <p><strong>Categoría:</strong> ${data.asistente.categoria}</p>
+                            <p><strong>Consumos:</strong> ${data.asistente.consumos}</p>
+                            <div class="my-3">
+                                <img src="${data.qr_url}" alt="QR Code" style="max-width: 250px;" class="img-fluid">
+                            </div>
+                            <a href="${data.qr_url}" download="qr_${data.asistente.cc}.png" class="btn btn-primary btn-sm">
+                                <i class="fas fa-download"></i> DESCARGAR QR
+                            </a>
+                        </div>
+                    `;
+                    
+                    document.getElementById('modal-content').innerHTML = modalBody;
+                    document.querySelector('#confirmModal .modal-title').innerHTML = 
+                        '<i class="fas fa-qrcode"></i> CÓDIGO QR';
+                    new bootstrap.Modal(document.getElementById('confirmModal')).show();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        };
+
+        window.editarAsistente = function(cc) {
+            window.open(`/asistentes/${cc}/editar/`, '_blank');
+        };
 
         // ===== SCANNER QR =====
 
@@ -693,90 +854,95 @@
             });
         }
 
-        // ===== MARCAR INGRESO =====
-        function marcarIngreso(cc) {
-            if (!confirm('¿Marcar este asistente como ingresado?')) return;
+        // ===== CARGAR LISTA =====
+        function cargarLista() {
+            const buscar = document.getElementById('filtro-buscar').value;
+            const estado = document.getElementById('filtro-estado').value;
             
-            fetch('{% url "core:marcar_ingreso" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: JSON.stringify({ cc: cc })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert(data.message);
-                    cargarLista(); // Recargar lista
-                    // Actualizar stats
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.message);
-                }
-            });
-        }
-
-        // ===== ELIMINAR ASISTENTE =====
-        function eliminarAsistente(cc) {
-            if (!confirm('¿ELIMINAR este asistente permanentemente?')) return;
+            let url = '{% url "core:lista_asistentes" %}';
+            let params = new URLSearchParams();
+            if (buscar) params.append('buscar', buscar);
+            if (estado) params.append('estado', estado);
+            if (params.toString()) url += '?' + params.toString();
             
-            fetch('{% url "core:eliminar_asistente" %}', {
-                method: 'POST',
+            fetch(url, {
                 headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: JSON.stringify({ cc: cc })
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert(data.message);
-                    cargarLista(); // Recargar lista
-                    location.reload(); // Actualizar stats
-                } else {
-                    alert('Error: ' + data.message);
-                }
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('lista-asistentes').innerHTML = html;
+            })
+            .catch(error => {
+                document.getElementById('lista-asistentes').innerHTML = 
+                    '<div class="alert alert-danger">Error cargando lista</div>';
             });
         }
 
-        // ===== VER QR =====
-        function verQR(cc) {
-            fetch(`{% url "core:obtener_qr" "PLACEHOLDER" %}`.replace('PLACEHOLDER', cc))
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const modalBody = `
-                        <div class="text-center">
-                            <h4>${data.asistente.nombre}</h4>
-                            <p><strong>CC:</strong> ${data.asistente.cc}</p>
-                            <p><strong>Categoría:</strong> ${data.asistente.categoria}</p>
-                            <p><strong>Consumos:</strong> ${data.asistente.consumos}</p>
-                            <div class="my-3">
-                                <img src="${data.qr_url}" alt="QR Code" style="max-width: 250px;" class="img-fluid">
-                            </div>
-                            <a href="${data.qr_url}" download="qr_${data.asistente.cc}.png" class="btn btn-primary btn-sm">
-                                <i class="fas fa-download"></i> DESCARGAR QR
-                            </a>
-                        </div>
-                    `;
-                    
-                    document.getElementById('modal-content').innerHTML = modalBody;
-                    document.querySelector('#confirmModal .modal-title').innerHTML = 
-                        '<i class="fas fa-qrcode"></i> CÓDIGO QR';
-                    new bootstrap.Modal(document.getElementById('confirmModal')).show();
-                } else {
-                    alert('Error: ' + data.message);
+        // ===== DESCARGAR EXCEL =====
+
+        function descargarExcel() {
+            const btn = event.target;
+            const textoOriginal = btn.innerHTML;
+            
+            // Mostrar loading
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> GENERANDO...';
+            btn.disabled = true;
+            
+            // Método más robusto para descargar
+            fetch('{% url "core:exportar_excel" %}', {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
                 }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                // Crear URL del blob y descargar
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `asistentes_dmt69_${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                
+                // Mostrar mensaje de éxito
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-check"></i> Archivo Excel descargado exitosamente
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.querySelector('.container-fluid').insertBefore(alertDiv, document.querySelector('.row'));
+                
+                // Auto-remove alert after 3 seconds
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.parentNode.removeChild(alertDiv);
+                    }
+                }, 3000);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al generar el archivo Excel. Verifica que:\n1. La URL esté configurada correctamente\n2. El servidor esté funcionando\n3. Tengas permisos para descargar archivos');
+            })
+            .finally(() => {
+                // Restaurar botón
+                setTimeout(() => {
+                    btn.innerHTML = textoOriginal;
+                    btn.disabled = false;
+                }, 1000);
             });
         }
 
-        // ===== EDITAR ASISTENTE =====
-        function editarAsistente(cc) {
-            window.open(`/asistentes/${cc}/editar/`, '_blank');
-        }
 
         // ===== BUSCAR POR CC =====
         function buscarPorCC() {

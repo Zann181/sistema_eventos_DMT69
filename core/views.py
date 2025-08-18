@@ -13,6 +13,14 @@ from .decorators import entrada_o_admin, solo_entrada, ajax_login_required
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 
 
+    # Agregar estas importaciones al inicio del archivo views.py
+from django.http import HttpResponse
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.utils import get_column_letter
+from datetime import datetime
+import io
+
 # ===== DASHBOARD PRINCIPAL =====
 @login_required
 def dashboard(request):
@@ -552,4 +560,138 @@ def confirmar_ingreso(request):
         return JsonResponse({'success': False, 'message': f'Error: {str(e)}'}, status=500)
     
 
+# Corrige la vista exportar_excel en views.py
+@entrada_o_admin
+def exportar_excel(request):
+    """Exportar todos los asistentes a un archivo Excel"""
+    try:
+        # Obtener todos los asistentes
+        asistentes = Asistente.objects.all().order_by('-fecha_registro')
+        
+        # Crear workbook y worksheet
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Asistentes DMT 69"
+        
+        # Configurar estilos
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        center_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Definir headers
+        headers = [
+            'NOMBRE', 'CEDULA', 'TELEFONO', 'CORREO', 'CATEGORIA', 
+            'CONSUMOS DISPONIBLES', 'ESTADO', 'FECHA REGISTRO', 
+            'FECHA INGRESO', 'HORA INGRESO', 'VERIFICADO POR'
+        ]
+        
+        # Escribir headers
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_alignment
+        
+        # Escribir datos de asistentes
+        for row_num, asistente in enumerate(asistentes, 2):
+            ws.cell(row=row_num, column=1, value=asistente.nombre)
+            ws.cell(row=row_num, column=2, value=asistente.cc)
+            ws.cell(row=row_num, column=3, value=asistente.numero or '')
+            ws.cell(row=row_num, column=4, value=asistente.correo or '')
+            ws.cell(row=row_num, column=5, value=asistente.categoria.nombre)
+            ws.cell(row=row_num, column=6, value=asistente.consumos_disponibles)
+            ws.cell(row=row_num, column=7, value="INGRESO" if asistente.ha_ingresado else "PENDIENTE")  # Corregido el texto
+            
+            # Fecha de registro
+            if asistente.fecha_registro:
+                ws.cell(row=row_num, column=8, value=asistente.fecha_registro.strftime('%d/%m/%Y'))
+            else:
+                ws.cell(row=row_num, column=8, value='')
+            
+            # Fecha y hora de ingreso
+            if asistente.fecha_ingreso:
+                ws.cell(row=row_num, column=9, value=asistente.fecha_ingreso.strftime('%d/%m/%Y'))
+                ws.cell(row=row_num, column=10, value=asistente.fecha_ingreso.strftime('%H:%M:%S'))
+            else:
+                ws.cell(row=row_num, column=9, value='')
+                ws.cell(row=row_num, column=10, value='')
+            
+            # Usuario que verificó
+            if asistente.usuario_entrada:
+                ws.cell(row=row_num, column=11, value=asistente.usuario_entrada.username)
+            else:
+                ws.cell(row=row_num, column=11, value='')
+        
+        # Ajustar ancho de columnas
+        column_widths = {
+            'A': 25,  # NOMBRE
+            'B': 15,  # CEDULA
+            'C': 15,  # TELEFONO
+            'D': 30,  # CORREO
+            'E': 20,  # CATEGORIA
+            'F': 12,  # CONSUMOS
+            'G': 12,  # ESTADO
+            'H': 15,  # FECHA REGISTRO
+            'I': 15,  # FECHA INGRESO
+            'J': 12,  # HORA INGRESO
+            'K': 15,  # VERIFICADO POR
+        }
+        
+        for col_letter, width in column_widths.items():
+            ws.column_dimensions[col_letter].width = width
+        
+        # Agregar información adicional al final
+        total_row = len(asistentes) + 3
+        ws.cell(row=total_row, column=1, value="RESUMEN:")
+        ws.cell(row=total_row, column=1).font = Font(bold=True)
+        
+        ws.cell(row=total_row + 1, column=1, value=f"Total asistentes: {asistentes.count()}")
+        ws.cell(row=total_row + 2, column=1, value=f"Han ingresado: {asistentes.filter(ha_ingresado=True).count()}")
+        ws.cell(row=total_row + 3, column=1, value=f"Pendientes: {asistentes.filter(ha_ingresado=False).count()}")
+        ws.cell(row=total_row + 4, column=1, value=f"Exportado el: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        ws.cell(row=total_row + 5, column=1, value=f"Exportado por: {request.user.username}")
+        
+        # Crear respuesta HTTP
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        filename = f"asistentes_dmt69_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        # Guardar workbook en response
+        wb.save(response)
+        
+        return response
+        
+    except Exception as e:
+        # En caso de error, devolver respuesta de error
+        return JsonResponse({
+            'success': False, 
+            'message': f'Error al generar Excel: {str(e)}'
+        }, status=500)
+
+@entrada_o_admin
+def exportar_excel_simple(request):
+    """Versión simple para testing"""
+    import csv
+    from django.http import HttpResponse
     
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="asistentes.csv"'
+    
+    writer = csv.writer(response)
+    writer.writerow(['Nombre', 'Cedula', 'Telefono', 'Email', 'Categoria', 'Estado'])
+    
+    asistentes = Asistente.objects.all()
+    for asistente in asistentes:
+        writer.writerow([
+            asistente.nombre,
+            asistente.cc,
+            asistente.numero,
+            asistente.correo,
+            asistente.categoria.nombre,
+            'INGRESÓ' if asistente.ha_ingresado else 'PENDIENTE'
+        ])
+    
+    return response

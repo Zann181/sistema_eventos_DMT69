@@ -1,0 +1,39 @@
+from core.models import Asistente
+import os
+
+# Regenerar QRs para todos los asistentes
+asistentes = Asistente.objects.all()
+total = asistentes.count()
+print(f"🔄 Regenerando QRs para {total} asistentes con nuevo diseño DMT...")
+
+errores = 0
+exitosos = 0
+
+for i, asistente in enumerate(asistentes, 1):
+    try:
+        # Eliminar QR anterior si existe
+        if asistente.qr_image:
+            try:
+                if os.path.exists(asistente.qr_image.path):
+                    os.remove(asistente.qr_image.path)
+                asistente.qr_image.delete(save=False)
+            except:
+                pass  # Ignorar errores al eliminar
+        
+        # Generar nuevo QR con logo DMT
+        asistente.generar_qr()
+        exitosos += 1
+        print(f"✅ {i}/{total} - {asistente.nombre[:30]}")
+        
+    except Exception as e:
+        errores += 1
+        print(f"❌ {i}/{total} - Error con {asistente.nombre[:30]}: {str(e)}")
+
+print(f"\n🎉 Regeneración completada!")
+print(f"✅ Exitosos: {exitosos}")
+print(f"❌ Errores: {errores}")
+
+# Verificar resultado
+con_qr = Asistente.objects.exclude(qr_image='').count()
+sin_qr = Asistente.objects.filter(qr_image='').count()
+print(f"📊 Resultado final: {con_qr} con QR, {sin_qr} sin QR")

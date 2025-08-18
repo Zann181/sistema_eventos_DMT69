@@ -233,8 +233,7 @@ class Asistente(models.Model):
         y_start = qr_size + 10
         
         # Información del evento
-        evento_text = f"DMT 69 - {self.nombre[:20]}{'...' if len(self.nombre) > 20 else ''}"
-        categoria_text = f"Categoría: {self.categoria.nombre} | Consumos: {self.consumos_disponibles}"
+        evento_text = f"DMT 69 - Evento xxxx"
         
         # Centrar texto del evento
         text_width = draw.textlength(evento_text, font=font_title)

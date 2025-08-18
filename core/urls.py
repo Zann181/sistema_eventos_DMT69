@@ -32,5 +32,8 @@ urlpatterns = [
     # AGREGAR ESTAS DOS LÍNEAS:
     path('entrada/verificar-qr-preview/', views.verificar_qr_preview, name='verificar_qr_preview'),
     path('entrada/confirmar-ingreso/', views.confirmar_ingreso, name='confirmar_ingreso'),
-    
+    # Agregar esta línea en tu archivo urls.py dentro de urlpatterns
+    path('exportar-excel/', views.exportar_excel, name='exportar_excel'),
+    path('exportar-csv/', views.exportar_excel_simple, name='exportar_csv'),
+
 ]
