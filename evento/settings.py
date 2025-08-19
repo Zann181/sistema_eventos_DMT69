@@ -153,3 +153,29 @@ SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 # --- FIN DEL CÓDIGO AGREGADO ---
+
+
+# Agregar al final de settings.py
+
+# ===== CONFIGURACIÓN DE EMAIL =====
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'zamamotas@gmail.com'  # CAMBIAR por tu email real
+EMAIL_HOST_PASSWORD = 'uxxg iyhg rgsb xbmw'  # CAMBIAR por tu contraseña de aplicación
+DEFAULT_FROM_EMAIL = 'DMT 69 Event <zamamotas@gmail.com>'
+
+
+# PASOS PARA OBTENER LA CONTRASEÑA DE APLICACIÓN:
+# 1. Ve a https://myaccount.google.com/
+# 2. Seguridad → Verificación en 2 pasos (actívala si no está)
+# 3. Contraseñas de aplicaciones → Selecciona "Correo" → Generar
+# 4. Copia la contraseña de 16 caracteres (ej: abcd efgh ijkl mnop)
+# 5. Úsala en EMAIL_HOST_PASSWORD (CON espacios o sin espacios)
+
+# ===== CONFIGURACIÓN DEL EVENTO =====
+EVENTO_NOMBRE = 'DMT 69'
+EVENTO_FECHA = '31 de Diciembre 2025'
+EVENTO_HORA = '10:00 PM'
+EVENTO_LUGAR = 'Mocoa, Putumayo'

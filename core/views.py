@@ -121,7 +121,8 @@ def lista_asistentes(request):
 
 
 
-# ===== CREAR ASISTENTE =====
+# Reemplazar la función crear_asistente en views.py
+
 @entrada_o_admin
 def crear_asistente(request):
     if request.method == "POST":
@@ -131,6 +132,7 @@ def crear_asistente(request):
                 if Asistente.objects.filter(cc=cc).exists():
                     messages.error(request, f"Ya existe asistente con cédula {cc}")
                 else:
+                    # Crear asistente
                     asistente = Asistente.objects.create(
                         nombre=request.POST["nombre"].strip(),
                         cc=cc,
@@ -139,16 +141,42 @@ def crear_asistente(request):
                         categoria_id=request.POST["categoria"],
                         creado_por=request.user,
                     )
-                    messages.success(
-                        request, f"Asistente {asistente.nombre} creado exitosamente"
-                    )
+                    
+                    # Generar QR
+                    if not asistente.qr_image:
+                        asistente.generar_qr()
+                    
+                    # Enviar email
+                    primer_nombre = asistente.nombre.split()[0]
+                    email_enviado = False
+                    
+                    try:
+                        from .email_utils import enviar_email_bienvenida
+                        email_enviado = enviar_email_bienvenida(asistente)
+                    except Exception as e:
+                        print(f"Error enviando email: {e}")
+                    
+                    # Mostrar mensaje según resultado
+                    if email_enviado:
+                        messages.success(
+                            request, 
+                            f"✅ Asistente {asistente.nombre} creado exitosamente. "
+                            f"Email de confirmación enviado a {asistente.correo}"
+                        )
+                    else:
+                        messages.warning(
+                            request, 
+                            f"⚠️ Asistente {asistente.nombre} creado, pero no se pudo enviar el email. "
+                            f"Verifica la configuración de correo en settings.py"
+                        )
+                    
                     return redirect("core:ver_qr", cc=asistente.cc)
+                    
         except Exception as e:
             messages.error(request, f"Error al crear asistente: {e}")
 
     # Redirigir de vuelta al dashboard
     return redirect("core:dashboard")
-
 
 # ===== EDITAR ASISTENTE =====
 @entrada_o_admin
