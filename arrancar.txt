@@ -1,0 +1,27 @@
+python manage.py runserver_plus --cert-file certs/localhost+3.pem --key-file certs/localhost+3-key.pem
+
+
+ngrok http 8000 --host-header=localhost:8000
+
+
+# Terminal 1
+python manage.py runserver_plus --cert-file certs/localhost+3.pem --key-file certs/localhost+3-key.pem 0.0.0.0:8000
+
+# Terminal 2
+ngrok http https://localhost:8000
+
+
+
+Cambiar nombre del evento core/models.py
+linea 235
+  
+        # Información del evento
+        evento_text = f"DMT 69 - Evento xxxx"
+
+
+modificar datos de correo core/utils.py
+
+def enviar_email_bienvenida(asistente):
+    """Envía email de bienvenida con QR al asistente"""
+
+
