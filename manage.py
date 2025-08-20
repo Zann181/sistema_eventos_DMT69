@@ -45,7 +45,7 @@ def main():
             
             print("\n✅ ¡Servidor de desarrollo listo!")
             print(f"   ✓ Para acceder desde otros dispositivos, usa: {protocol}://{local_ip}:{port}/")
-            print(f"   ✓ O localmente en tu computador:             http://127.0.0.1:{port}/")
+            print(f"   ✓ O localmente en tu computador:             {protocol}://127.0.0.1:{port}/")
             print("   (Presiona CTRL+C para detener)\n")
 
             # Si no se especifica una dirección, hace que el servidor sea accesible en la red

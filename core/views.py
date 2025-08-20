@@ -50,65 +50,6 @@ def dashboard(request):
         return redirect("admin:index")
 
 
-def dashboard_barra_temporal(request):
-    """Dashboard temporal para usuarios de barra usando funcionalidad existente"""
-    hoy = datetime.now().date()
-
-    # Importar modelos de barra si existen, sino usar valores por defecto
-    try:
-        from .models import Producto, VentaBarra, MovimientoStock
-        
-        # Estadísticas básicas de barra
-        stats = {
-            "total_productos": Producto.objects.filter(activo=True).count(),
-            "productos_agotados": Producto.objects.filter(stock=0, activo=True).count(),
-            "ventas_hoy": VentaBarra.objects.filter(
-                vendedor=request.user, fecha__date=hoy
-            ).count(),
-            "ingresos_hoy": VentaBarra.objects.filter(
-                vendedor=request.user, fecha__date=hoy
-            ).aggregate(total=Sum('total'))['total'] or 0,
-        }
-        
-        # Lista de productos para mostrar
-        productos = []
-        for producto in Producto.objects.filter(activo=True).order_by('nombre')[:12]:  # Máximo 12 productos
-            # Color según stock
-            if producto.stock == 0:
-                color_stock = 'danger'
-            elif producto.stock <= producto.stock_minimo:
-                color_stock = 'warning'
-            else:
-                color_stock = 'success'
-                
-            productos.append({
-                'producto': producto,
-                'color_stock': color_stock,
-                'puede_vender': producto.stock > 0
-            })
-        
-        context = {
-            "stats": stats,
-            "productos": productos,
-            "es_barra": True,
-            "mensaje_desarrollo": "Sistema de barra en desarrollo - Vista temporal"
-        }
-        
-    except ImportError:
-        # Si no existen los modelos de barra, mostrar mensaje básico
-        context = {
-            "stats": {
-                "total_productos": 0,
-                "productos_agotados": 0,
-                "ventas_hoy": 0,
-                "ingresos_hoy": 0,
-            },
-            "productos": [],
-            "es_barra": True,
-            "mensaje_desarrollo": "Sistema de barra en desarrollo - Modelos no encontrados"
-        }
-    
-    return render(request, "core/dashboard_barra_temporal.html", context)
 
 
 
@@ -801,15 +742,11 @@ def exportar_excel_simple(request):
 
 
 # --------- Barras y ventas -------
-# AGREGAR ESTAS FUNCIONES AL FINAL DE core/views.py
-
-# REEMPLAZA ESTAS FUNCIONES EN TU core/views.py
-
-# ===== SISTEMA DE BARRA =====
+# BUSCA la función dashboard_barra en core/views.py (línea ~655) y REEMPLÁZALA con esta:
 
 @login_required
 def dashboard_barra(request):
-    """Dashboard del sistema de barra"""
+    """Dashboard del sistema de barra con cálculo basado en descripción"""
     try:
         perfil = request.user.perfilusuario
         if perfil.rol not in ['barra', 'admin']:
@@ -819,40 +756,37 @@ def dashboard_barra(request):
         messages.error(request, 'Usuario sin perfil asignado')
         return redirect('admin:index')
     
-    hoy = datetime.now().date()
-    
-    # Estadísticas
-    stats = {
-        'productos_activos': Producto.objects.filter(activo=True, stock__gt=0).count(),
-        'productos_agotados': Producto.objects.filter(activo=True, stock=0).count(),
-        'mis_ventas_hoy': VentaBarra.objects.filter(
-            vendedor=request.user, 
-            fecha__date=hoy
-        ).count(),
-        'total_vendido_hoy': VentaBarra.objects.filter(
-            vendedor=request.user, 
-            fecha__date=hoy
-        ).aggregate(total=Sum('total'))['total'] or 0
-    }
+    # Calcular estadísticas basadas en la diferencia de stock
+    stats = calcular_stats_ventas_hoy(request.user)
     
     # Lista de productos con información de stock
     productos_info = []
-    productos = Producto.objects.filter(activo=True).order_by('nombre')
-    
-    for producto in productos:
-        # Determinar color del stock
-        if producto.stock == 0:
-            color_stock = 'danger'
-        elif producto.stock <= producto.stock_minimo:
-            color_stock = 'warning'
-        else:
-            color_stock = 'success'
+    try:
+        productos = Producto.objects.filter(activo=True).order_by('nombre')
         
-        productos_info.append({
-            'producto': producto,
-            'color_stock': color_stock,
-            'puede_vender': producto.stock > 0
-        })
+        for producto in productos:
+            # Determinar color del stock
+            if producto.stock == 0:
+                color_stock = 'danger'
+            elif producto.stock <= producto.stock_minimo:
+                color_stock = 'warning'
+            else:
+                color_stock = 'success'
+            
+            # Calcular productos vendidos para este producto específico
+            stock_inicial = extraer_stock_inicial_de_descripcion(producto.descripcion)
+            productos_vendidos_hoy = max(0, stock_inicial - producto.stock) if stock_inicial is not None else 0
+            
+            productos_info.append({
+                'producto': producto,
+                'color_stock': color_stock,
+                'puede_vender': producto.stock > 0,
+                'stock_inicial_dia': stock_inicial,
+                'vendidos_hoy': productos_vendidos_hoy
+            })
+    except Exception as e:
+        print(f"Error cargando productos: {e}")
+        productos_info = []
     
     context = {
         'stats': stats,
@@ -861,6 +795,249 @@ def dashboard_barra(request):
     }
     
     return render(request, 'core/dashboard_barra.html', context)
+
+
+def extraer_stock_inicial_de_descripcion(descripcion):
+    """
+    Extrae el stock inicial del día desde la descripción del producto
+    Formato esperado: "Stock inicial día: 50" o similar
+    """
+    if not descripcion:
+        return None
+    
+    try:
+        # Buscar patrones como "Stock inicial día: 50", "Inicial: 50", etc.
+        import re
+        
+        # Patrón flexible para encontrar números después de palabras clave
+        patrones = [
+            r'stock\s+inicial\s+d[ií]a?\s*:?\s*(\d+)',
+            r'inicial\s*:?\s*(\d+)',
+            r'stock\s+d[ií]a\s*:?\s*(\d+)',
+            r'cantidad\s+inicial\s*:?\s*(\d+)',
+            r'd[ií]a\s*:?\s*(\d+)',
+        ]
+        
+        for patron in patrones:
+            match = re.search(patron, descripcion.lower())
+            if match:
+                return int(match.group(1))
+        
+        # Si no encuentra patrones específicos, buscar cualquier número al final
+        numeros = re.findall(r'\d+', descripcion)
+        if numeros:
+            return int(numeros[-1])  # Tomar el último número encontrado
+            
+    except (ValueError, AttributeError, IndexError):
+        pass
+    
+    return None
+
+
+
+
+def calcular_stats_ventas_hoy(usuario):
+    """
+    Calcula las estadísticas de ventas del día basándose en la diferencia de stock
+    """
+    try:
+        productos = Producto.objects.filter(activo=True)
+        
+        total_productos_vendidos = 0
+        total_ingresos_estimados = 0.0
+        productos_con_ventas = 0
+        
+        for producto in productos:
+            # Extraer stock inicial de la descripción
+            stock_inicial = extraer_stock_inicial_de_descripcion(producto.descripcion)
+            
+            if stock_inicial is not None:
+                # Calcular productos vendidos (diferencia entre inicial y actual)
+                vendidos_hoy = max(0, stock_inicial - producto.stock)
+                
+                if vendidos_hoy > 0:
+                    total_productos_vendidos += vendidos_hoy
+                    total_ingresos_estimados += vendidos_hoy * float(producto.precio)
+                    productos_con_ventas += 1
+        
+        # Contar productos activos y agotados
+        productos_activos = productos.filter(stock__gt=0).count()
+        productos_agotados = productos.filter(stock=0).count()
+        
+        return {
+            'productos_activos': productos_activos,
+            'productos_agotados': productos_agotados,
+            'mis_ventas_hoy': productos_con_ventas,  # Productos diferentes vendidos
+            'productos_vendidos_hoy': total_productos_vendidos,  # Cantidad total vendida
+            'total_vendido_hoy': round(total_ingresos_estimados, 2)
+        }
+        
+    except Exception as e:
+        print(f"Error calculando stats de ventas: {e}")
+        return {
+            'productos_activos': 0,
+            'productos_agotados': 0,
+            'mis_ventas_hoy': 0,
+            'productos_vendidos_hoy': 0,
+            'total_vendido_hoy': 0.0
+        }
+
+
+@ajax_login_required
+def obtener_stats_barra(request):
+    """Obtener estadísticas actualizadas para el dashboard"""
+    try:
+        stats = calcular_stats_ventas_hoy(request.user)
+        return JsonResponse({'success': True, 'stats': stats})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+
+
+@login_required
+def mis_ventas_barra(request):
+    """Ver mis ventas del día calculadas por diferencia de stock"""
+    try:
+        perfil = request.user.perfilusuario
+        if perfil.rol not in ['barra', 'admin']:
+            messages.error(request, 'No tienes permisos para ver ventas')
+            return redirect('core:dashboard')
+    except PerfilUsuario.DoesNotExist:
+        messages.error(request, 'Usuario sin perfil asignado')
+        return redirect('admin:index')
+    
+    fecha_filtro = datetime.now().date()
+    
+    # Calcular ventas basándose en la diferencia de stock
+    try:
+        productos = Producto.objects.filter(activo=True)
+        ventas_calculadas = []
+        
+        total_productos_vendidos = 0
+        total_ingresos = 0.0
+        total_transacciones = 0
+        
+        for producto in productos:
+            stock_inicial = extraer_stock_inicial_de_descripcion(producto.descripcion)
+            
+            if stock_inicial is not None:
+                vendidos_hoy = max(0, stock_inicial - producto.stock)
+                
+                if vendidos_hoy > 0:
+                    ingreso_producto = vendidos_hoy * float(producto.precio)
+                    
+                    # Crear objeto simulado de venta para mostrar en la template
+                    venta_simulada = {
+                        'producto': producto,
+                        'cantidad': vendidos_hoy,
+                        'precio_unitario': producto.precio,
+                        'total': ingreso_producto,
+                        'fecha': datetime.now(),  # Fecha actual como aproximación
+                        'asistente': None,  # Cliente general
+                        'usa_consumo_incluido': False
+                    }
+                    
+                    ventas_calculadas.append(venta_simulada)
+                    total_productos_vendidos += vendidos_hoy
+                    total_ingresos += ingreso_producto
+                    total_transacciones += 1
+        
+        stats_ventas = {
+            'total_ventas': total_transacciones,
+            'productos_vendidos': total_productos_vendidos,
+            'total_ingresos': round(total_ingresos, 2)
+        }
+        
+    except Exception as e:
+        print(f"Error calculando ventas: {e}")
+        ventas_calculadas = []
+        stats_ventas = {
+            'total_ventas': 0,
+            'productos_vendidos': 0,
+            'total_ingresos': 0
+        }
+    
+    context = {
+        'ventas': ventas_calculadas,
+        'stats_ventas': stats_ventas,
+        'fecha': fecha_filtro,
+        'user': request.user,
+        'es_calculo_estimado': True  # Flag para mostrar en template que son cálculos
+    }
+    
+    return render(request, 'core/mis_ventas_barra.html', context)
+
+
+# FUNCIÓN AUXILIAR para actualizar stock inicial en descripción (opcional)
+@login_required
+def actualizar_stock_inicial_dia(request):
+    """
+    Función auxiliar para actualizar el stock inicial del día en las descripciones
+    Llamar al inicio del día para resetear los contadores
+    """
+    try:
+        perfil = request.user.perfilusuario
+        if perfil.rol not in ['admin']:
+            return JsonResponse({'success': False, 'message': 'Solo administradores'})
+    except PerfilUsuario.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Usuario sin perfil'})
+    
+    try:
+        productos_actualizados = 0
+        
+        for producto in Producto.objects.filter(activo=True):
+            # Actualizar la descripción con el stock actual como inicial del día
+            nueva_descripcion = f"Stock inicial día: {producto.stock}"
+            
+            # Mantener descripción anterior si existe y no contiene info de stock
+            if producto.descripcion and 'stock inicial' not in producto.descripcion.lower():
+                nueva_descripcion = f"{producto.descripcion} | {nueva_descripcion}"
+            
+            producto.descripcion = nueva_descripcion
+            producto.save(update_fields=['descripcion'])
+            productos_actualizados += 1
+        
+        return JsonResponse({
+            'success': True, 
+            'message': f'Stock inicial actualizado para {productos_actualizados} productos'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+
+
+# FUNCIÓN DE DEBUG para verificar cálculos
+@login_required
+def debug_ventas_calculadas(request):
+    """Función de debug para verificar los cálculos de ventas"""
+    try:
+        productos_debug = []
+        
+        for producto in Producto.objects.filter(activo=True):
+            stock_inicial = extraer_stock_inicial_de_descripcion(producto.descripcion)
+            vendidos = max(0, stock_inicial - producto.stock) if stock_inicial else 0
+            
+            productos_debug.append({
+                'nombre': producto.nombre,
+                'descripcion': producto.descripcion,
+                'stock_actual': producto.stock,
+                'stock_inicial_extraido': stock_inicial,
+                'vendidos_calculados': vendidos,
+                'ingresos_calculados': vendidos * float(producto.precio) if vendidos > 0 else 0
+            })
+        
+        return JsonResponse({
+            'productos': productos_debug,
+            'timestamp': datetime.now().strftime('%H:%M:%S')
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': f'Error en debug: {str(e)}'})
+
+
+
+
+
 
 
 # REEMPLAZA LA FUNCIÓN vender_producto EN core/views.py
@@ -970,30 +1147,6 @@ def debug_stock(request, producto_id):
     except Producto.DoesNotExist:
         return JsonResponse({'error': 'Producto no encontrado'})
 
-@ajax_login_required
-def obtener_stats_barra(request):
-    """Obtener estadísticas actualizadas para el dashboard"""
-    try:
-        hoy = datetime.now().date()
-        
-        stats = {
-            'productos_activos': Producto.objects.filter(activo=True, stock__gt=0).count(),
-            'productos_agotados': Producto.objects.filter(activo=True, stock=0).count(),
-            'mis_ventas_hoy': VentaBarra.objects.filter(
-                vendedor=request.user, 
-                fecha__date=hoy
-            ).count(),
-            'total_vendido_hoy': float(VentaBarra.objects.filter(
-                vendedor=request.user, 
-                fecha__date=hoy
-            ).aggregate(total=Sum('total'))['total'] or 0)
-        }
-        
-        return JsonResponse({'success': True, 'stats': stats})
-        
-    except Exception as e:
-        return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
-
 
 @ajax_login_required
 def buscar_asistente_barra(request):
@@ -1027,53 +1180,11 @@ def buscar_asistente_barra(request):
         return JsonResponse({'success': False, 'message': 'Asistente no encontrado'})
 
 
-@login_required
-def mis_ventas_barra(request):
-    """Ver mis ventas del día"""
-    try:
-        perfil = request.user.perfilusuario
-        if perfil.rol not in ['barra', 'admin']:
-            messages.error(request, 'No tienes permisos para ver ventas')
-            return redirect('core:dashboard')
-    except PerfilUsuario.DoesNotExist:
-        messages.error(request, 'Usuario sin perfil asignado')
-        return redirect('admin:index')
-    
-    fecha = request.GET.get('fecha')
-    if fecha:
-        try:
-            fecha_filtro = datetime.strptime(fecha, '%Y-%m-%d').date()
-        except ValueError:
-            fecha_filtro = datetime.now().date()
-    else:
-        fecha_filtro = datetime.now().date()
-    
-    # Obtener ventas del día
-    ventas = VentaBarra.objects.filter(
-        vendedor=request.user,
-        fecha__date=fecha_filtro
-    ).order_by('-fecha').select_related('producto', 'asistente')
-    
-    # Estadísticas del día
-    stats_ventas = {
-        'total_ventas': ventas.count(),
-        'productos_vendidos': ventas.aggregate(total=Sum('cantidad'))['total'] or 0,
-        'total_ingresos': ventas.aggregate(total=Sum('total'))['total'] or 0
-    }
-    
-    context = {
-        'ventas': ventas,
-        'stats_ventas': stats_ventas,
-        'fecha': fecha_filtro,
-        'user': request.user
-    }
-    
-    return render(request, 'core/mis_ventas_barra.html', context)
 
 
 @login_required
 def exportar_reporte_barra(request):
-    """Exportar reporte de ventas a Excel"""
+    """Exportar reporte de ventas a Excel basado en cálculo de diferencias de stock"""
     try:
         perfil = request.user.perfilusuario
         if perfil.rol not in ['barra', 'admin']:
@@ -1086,11 +1197,38 @@ def exportar_reporte_barra(request):
     try:
         hoy = datetime.now().date()
         
-        # Obtener ventas del día
-        ventas = VentaBarra.objects.filter(
-            vendedor=request.user,
-            fecha__date=hoy
-        ).order_by('-fecha').select_related('producto', 'asistente')
+        # Calcular ventas basándose en la diferencia de stock (igual que en mis_ventas_barra)
+        productos = Producto.objects.filter(activo=True)
+        ventas_calculadas = []
+        
+        total_productos_vendidos = 0
+        total_ingresos = 0.0
+        total_transacciones = 0
+        
+        for producto in productos:
+            stock_inicial = extraer_stock_inicial_de_descripcion(producto.descripcion)
+            
+            if stock_inicial is not None:
+                vendidos_hoy = max(0, stock_inicial - producto.stock)
+                
+                if vendidos_hoy > 0:
+                    ingreso_producto = vendidos_hoy * float(producto.precio)
+                    
+                    # Crear objeto simulado de venta para el Excel
+                    venta_simulada = {
+                        'producto_nombre': producto.nombre,
+                        'cantidad': vendidos_hoy,
+                        'precio_unitario': float(producto.precio),
+                        'total': ingreso_producto,
+                        'stock_inicial': stock_inicial,
+                        'stock_actual': producto.stock,
+                        'fecha': datetime.now()  # Fecha actual como aproximación
+                    }
+                    
+                    ventas_calculadas.append(venta_simulada)
+                    total_productos_vendidos += vendidos_hoy
+                    total_ingresos += ingreso_producto
+                    total_transacciones += 1
         
         # Crear workbook
         wb = openpyxl.Workbook()
@@ -1102,8 +1240,8 @@ def exportar_reporte_barra(request):
         header_fill = PatternFill(start_color="28a745", end_color="28a745", fill_type="solid")
         center_alignment = Alignment(horizontal="center", vertical="center")
         
-        # Headers
-        headers = ['HORA', 'PRODUCTO', 'CANTIDAD', 'PRECIO UNIT.', 'TOTAL', 'CLIENTE']
+        # Headers actualizados para incluir información de stock
+        headers = ['PRODUCTO', 'STOCK INICIAL', 'STOCK ACTUAL', 'CANTIDAD VENDIDA', 'PRECIO UNIT.', 'TOTAL INGRESOS', 'METODO']
         
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
@@ -1111,41 +1249,54 @@ def exportar_reporte_barra(request):
             cell.fill = header_fill
             cell.alignment = center_alignment
         
-        # Datos
-        for row_num, venta in enumerate(ventas, 2):
-            ws.cell(row=row_num, column=1, value=venta.fecha.strftime('%H:%M:%S'))
-            ws.cell(row=row_num, column=2, value=venta.producto.nombre)
-            ws.cell(row=row_num, column=3, value=venta.cantidad)
-            ws.cell(row=row_num, column=4, value=float(venta.precio_unitario))
-            ws.cell(row=row_num, column=5, value=float(venta.total))
-            ws.cell(row=row_num, column=6, value=venta.asistente.nombre if venta.asistente else "Cliente General")
+        # Datos calculados
+        for row_num, venta in enumerate(ventas_calculadas, 2):
+            ws.cell(row=row_num, column=1, value=venta['producto_nombre'])
+            ws.cell(row=row_num, column=2, value=venta['stock_inicial'])
+            ws.cell(row=row_num, column=3, value=venta['stock_actual'])
+            ws.cell(row=row_num, column=4, value=venta['cantidad'])
+            ws.cell(row=row_num, column=5, value=venta['precio_unitario'])
+            ws.cell(row=row_num, column=6, value=venta['total'])
+            ws.cell(row=row_num, column=7, value="Cálculo automático")
         
         # Ajustar columnas
-        column_widths = [15, 25, 10, 15, 15, 25]
+        column_widths = [25, 15, 15, 15, 15, 18, 20]
         for i, width in enumerate(column_widths, 1):
             ws.column_dimensions[get_column_letter(i)].width = width
         
         # Totales
-        total_row = len(ventas) + 3
+        total_row = len(ventas_calculadas) + 3
         ws.cell(row=total_row, column=1, value="TOTALES:")
         ws.cell(row=total_row, column=1).font = Font(bold=True)
         
-        total_productos = ventas.aggregate(total=Sum('cantidad'))['total'] or 0
-        total_ingresos = ventas.aggregate(total=Sum('total'))['total'] or 0
-        
-        ws.cell(row=total_row, column=3, value=total_productos)
-        ws.cell(row=total_row, column=5, value=float(total_ingresos))
+        ws.cell(row=total_row, column=4, value=total_productos_vendidos)
+        ws.cell(row=total_row, column=6, value=total_ingresos)
         
         # Información adicional
         ws.cell(row=total_row + 2, column=1, value=f"Fecha: {hoy.strftime('%d/%m/%Y')}")
         ws.cell(row=total_row + 3, column=1, value=f"Vendedor: {request.user.username}")
         ws.cell(row=total_row + 4, column=1, value=f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        ws.cell(row=total_row + 5, column=1, value="Método: Cálculo basado en diferencia de stock")
+        
+        # Resumen de estadísticas
+        ws.cell(row=total_row + 7, column=1, value="RESUMEN:")
+        ws.cell(row=total_row + 7, column=1).font = Font(bold=True)
+        ws.cell(row=total_row + 8, column=1, value=f"Productos diferentes vendidos: {total_transacciones}")
+        ws.cell(row=total_row + 9, column=1, value=f"Unidades totales vendidas: {total_productos_vendidos}")
+        ws.cell(row=total_row + 10, column=1, value=f"Ingresos totales estimados: ${total_ingresos:.2f}")
+        
+        # Nota explicativa
+        ws.cell(row=total_row + 12, column=1, value="NOTA:")
+        ws.cell(row=total_row + 12, column=1).font = Font(bold=True)
+        ws.cell(row=total_row + 13, column=1, value="Las ventas se calculan automáticamente comparando")
+        ws.cell(row=total_row + 14, column=1, value="el stock inicial del día (registrado en descripción)")
+        ws.cell(row=total_row + 15, column=1, value="con el stock actual de cada producto.")
         
         # Respuesta HTTP
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        filename = f"ventas_{request.user.username}_{hoy.strftime('%Y%m%d')}.xlsx"
+        filename = f"ventas_calculadas_{request.user.username}_{hoy.strftime('%Y%m%d')}.xlsx"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         
         wb.save(response)
@@ -1153,4 +1304,12 @@ def exportar_reporte_barra(request):
         
     except Exception as e:
         messages.error(request, f'Error generando reporte: {str(e)}')
-        return redirect('core:mis_ventas_barra')
+        return redirect('core:mis_ventas_barra')    
+
+
+
+
+
+
+
+

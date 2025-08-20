@@ -142,16 +142,23 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 
-# Añade esta línea al final del archivo. El '*' actúa como comodín.
-CSRF_TRUSTED_ORIGINS = ["https://*.ngrok-free.app"]
+# Configuración para ngrok
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.ngrok-free.app",
+    "https://*.ngrok.io",
+    "http://127.0.0.1:8000",
+    "https://127.0.0.1:8000",
+    "http://localhost:8000",
+    "https://localhost:8000",
+]
 
 
 # --- INICIO DEL CÓDIGO AGREGADO ---
 # Forzar HTTPS en producción y desarrollo con SSL
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 # --- FIN DEL CÓDIGO AGREGADO ---
 
 

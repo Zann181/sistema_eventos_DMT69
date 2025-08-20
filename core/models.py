@@ -325,11 +325,6 @@ class MovimientoStock(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
 
-    class Meta:
-        verbose_name = "Movimiento de Stock"
-        verbose_name_plural = "Movimientos de Stock"
-        ordering = ["-fecha"]
-
     def save(self, *args, **kwargs):
         # Guardar stock anterior
         self.stock_anterior = self.producto.stock
@@ -354,8 +349,8 @@ class MovimientoStock(models.Model):
     def __str__(self):
         return f"{self.producto.nombre} - {self.get_tipo_display()} - {self.cantidad}"
 
-
-# REEMPLAZA SOLO EL MÉTODO save() del modelo VentaBarra en core/models.py
+# En core/models.py, REEMPLAZA SOLO la clase VentaBarra (líneas 314-369) con esta versión limpia:
+# ELIMINA todo desde "class VentaBarra(models.Model):" hasta el segundo "__str__" y reemplázalo con esto:
 
 class VentaBarra(models.Model):
     """
@@ -381,87 +376,23 @@ class VentaBarra(models.Model):
         ordering = ["-fecha"]
 
     def save(self, *args, **kwargs):
-        """MÉTODO SIMPLIFICADO PARA EVITAR DOBLE DESCUENTO"""
-        # Calcular total si no está asignado
+        """Método simplificado - NO tocar stock aquí (se maneja en la vista)"""
+        # Solo calcular total si no está asignado
         if not self.total:
             self.total = self.cantidad * self.precio_unitario
         
-        # SOLO guardar la venta sin tocar stock
-        # El stock se maneja en la vista vender_producto()
+        # Guardar la venta SIN tocar stock (tu vista lo maneja)
         super().save(*args, **kwargs)
         
-        # Si usa consumo incluido y hay asistente, descontar consumos
+        # Solo manejar consumos incluidos si aplica
         if self.usa_consumo_incluido and self.asistente and self.pk:
-            # Solo actualizar consumos si la venta se guardó correctamente
             if self.asistente.consumos_disponibles >= self.cantidad:
                 self.asistente.consumos_disponibles -= self.cantidad
                 self.asistente.save(update_fields=["consumos_disponibles"])
 
     def __str__(self):
         cliente = self.asistente.nombre if self.asistente else "Cliente General"
-        return f"Venta a {cliente} - {self.producto.nombre} x{self.cantidad}"
-    
-    
-    class Meta:
-        verbose_name = "Venta"
-        verbose_name_plural = "Ventas"
-        ordering = ["-fecha"]
-
-    def save(self, *args, **kwargs):
-        # Calcular total
-        self.total = self.cantidad * self.precio_unitario
-        
-        # Verificar si es una venta nueva (no existe en BD)
-        is_new_venta = self.pk is None
-        
-        if is_new_venta:
-            # LÓGICA CORREGIDA PARA VENTAS NUEVAS
-            
-            # 1. Verificar stock disponible ANTES de cualquier cambio
-            if self.producto.stock < self.cantidad:
-                raise ValueError(f'Stock insuficiente. Disponible: {self.producto.stock}, Solicitado: {self.cantidad}')
-            
-            # 2. Guardar stock anterior ANTES de modificar
-            stock_anterior = self.producto.stock
-            
-            # 3. Actualizar stock del producto
-            self.producto.stock -= self.cantidad
-            self.producto.save(update_fields=['stock'])
-            
-            # 4. Guardar la venta
-            super().save(*args, **kwargs)
-            
-            # 5. Crear movimiento de stock con valores correctos
-            MovimientoStock.objects.create(
-                producto=self.producto,
-                tipo='venta',
-                cantidad=self.cantidad,
-                stock_anterior=stock_anterior,
-                stock_nuevo=self.producto.stock,  # Stock ya actualizado
-                observacion=f'Venta a {self.asistente.nombre if self.asistente else "Cliente General"} - ID: {self.pk}',
-                usuario=self.vendedor
-            )
-
-            # 6. Manejar consumos incluidos si aplica
-            if self.usa_consumo_incluido and self.asistente:
-                if self.asistente.consumos_disponibles >= self.cantidad:
-                    self.asistente.consumos_disponibles -= self.cantidad
-                    self.asistente.save(update_fields=["consumos_disponibles"])
-                else:
-                    # Revertir cambios si no hay suficientes consumos
-                    self.producto.stock += self.cantidad
-                    self.producto.save(update_fields=['stock'])
-                    # Eliminar la venta recién creada
-                    super().delete()
-                    raise ValueError(f'El asistente solo tiene {self.asistente.consumos_disponibles} consumos disponibles')
-        else:
-            # Para ventas existentes, solo actualizar sin tocar stock
-            super().save(*args, **kwargs)
-
-    def __str__(self):
-        cliente = self.asistente.nombre if self.asistente else "Cliente General"
-        return f"Venta a {cliente} - {self.producto.nombre} x{self.cantidad}"
-
+        return f"Venta a {cliente} - {self.producto.nombre} x{self.cantidad}"   
 # Signals para crear grupos automáticamente
 from django.db.models.signals import post_migrate
 from django.dispatch import receiver

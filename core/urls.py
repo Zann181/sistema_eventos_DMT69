@@ -44,4 +44,8 @@ urlpatterns = [
     path("barra/mis-ventas/", views.mis_ventas_barra, name="mis_ventas_barra"),
     path("barra/exportar-reporte/", views.exportar_reporte_barra, name="exportar_reporte_barra"),
 
+    # ===== FUNCIONES AUXILIARES PARA SISTEMA DE BARRA =====
+    path("barra/actualizar-stock-inicial/", views.actualizar_stock_inicial_dia, name="actualizar_stock_inicial_dia"),
+    path("barra/debug-ventas/", views.debug_ventas_calculadas, name="debug_ventas_calculadas"),
+
 ]
