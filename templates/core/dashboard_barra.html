@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DMT 69 - Sistema Barra</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: #1a1a1a;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+        }
+        .navbar {
+            background: #000 !important;
+            border-bottom: 2px solid #00ff00;
+        }
+        .card {
+            background: #2d2d2d;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+        }
+        .card-producto {
+            transition: all 0.3s ease;
+            min-height: 280px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .card-producto:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 12px 30px rgba(0, 255, 0, 0.5);
+            border-color: #00ccff;
+        }
+        .card-producto .card-body {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .stock-success {
+            border-color: #28a745 !important;
+            background: rgba(40, 167, 69, 0.1) !important;
+        }
+        .stock-warning {
+            border-color: #ffc107 !important;
+            background: rgba(255, 193, 7, 0.1) !important;
+        }
+        .stock-danger {
+            border-color: #dc3545 !important;
+            background: rgba(220, 53, 69, 0.1) !important;
+        }
+        .btn-vender {
+            background: #00ff00;
+            border-color: #00ff00;
+            color: #000;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .btn-vender:hover {
+            background: #00cc00;
+            border-color: #00cc00;
+            color: #000;
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(0, 255, 0, 0.6);
+        }
+        .btn-agotado {
+            background: #666;
+            border-color: #666;
+            color: #ccc;
+            cursor: not-allowed;
+        }
+        .precio-producto {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #00ccff;
+            text-shadow: 0 0 10px rgba(0, 204, 255, 0.5);
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 300px;
+        }
+        .search-container {
+            background: #2d2d2d;
+            border: 2px solid #00ff00;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .search-input {
+            background: #1a1a1a;
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 1.1em;
+            border-radius: 8px;
+        }
+        .search-input:focus {
+            background: #1a1a1a;
+            border-color: #00ccff;
+            color: #00ff00;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+        }
+        .search-input::placeholder {
+            color: #666;
+        }
+        .clear-search {
+            background: transparent;
+            border: 2px solid #ff6600;
+            color: #ff6600;
+            transition: all 0.3s;
+        }
+        .clear-search:hover {
+            background: #ff6600;
+            color: #000;
+            transform: scale(1.05);
+        }
+        .productos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            align-items: stretch;
+        }
+        .no-results {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 60px 20px;
+            background: #2d2d2d;
+            border: 2px dashed #666;
+            border-radius: 15px;
+        }
+        .producto-highlight {
+            animation: pulse-highlight 2s ease-in-out;
+        }
+        @keyframes pulse-highlight {
+            0%, 100% { border-color: #00ff00; }
+            50% { border-color: #00ccff; box-shadow: 0 0 20px rgba(0, 255, 0, 0.8); }
+        }
+        .search-stats {
+            color: #00ccff;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        .card-header {
+            background: rgba(0, 255, 0, 0.1);
+            border-bottom: 1px solid #00ff00;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .stock-badge {
+            animation: glow 2s infinite alternate;
+        }
+        @keyframes glow {
+            from { text-shadow: 0 0 5px currentColor; }
+            to { text-shadow: 0 0 15px currentColor; }
+        }
+        .categoria-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #00ccff;
+            color: #000;
+            font-size: 0.7em;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+        }
+        .card-producto {
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <span class="navbar-brand">
+                <i class="fas fa-beer"></i> DMT 69 - SISTEMA BARRA
+            </span>
+            <div>
+                <a href="{% url 'core:mis_ventas_barra' %}" class="btn btn-outline-info btn-sm me-2">
+                    <i class="fas fa-history"></i> MIS VENTAS
+                </a>
+                <span class="text-light me-3">{{ user.username }} ({{ user.perfilusuario.get_rol_display }})</span>
+                <a href="{% url 'logout' %}" class="btn btn-outline-danger btn-sm">LOGOUT</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <!-- Stats Row -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-box fa-2x mb-2 text-info"></i>
+                        <h2 id="stat-productos">{{ stats.productos_activos }}</h2>
+                        <small>PRODUCTOS ACTIVOS</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-2 text-warning"></i>
+                        <h2 id="stat-agotados">{{ stats.productos_agotados }}</h2>
+                        <small>PRODUCTOS AGOTADOS</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-shopping-cart fa-2x mb-2 text-success"></i>
+                        <h2 id="stat-ventas">{{ stats.mis_ventas_hoy }}</h2>
+                        <small>MIS VENTAS HOY</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-dollar-sign fa-2x mb-2 text-success"></i>
+                        <h2 id="stat-ingresos">${{ stats.total_vendido_hoy|floatformat:0 }}</h2>
+                        <small>INGRESOS HOY</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Buscador -->
+        <div class="search-container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <div class="input-group">
+                        <span class="input-group-text" style="background: #1a1a1a; border-color: #00ff00; color: #00ff00;">
+                            <i class="fas fa-search"></i>
+                        </span>
+                        <input type="text" 
+                               id="search-input" 
+                               class="form-control search-input" 
+                               placeholder="Buscar productos... (nombre, precio, descripción)"
+                               autocomplete="off">
+                    </div>
+                    <div class="search-stats" id="search-stats">
+                        Mostrando <span id="productos-visibles">{{ productos|length }}</span> de <span id="productos-totales">{{ productos|length }}</span> productos
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button type="button" id="clear-search" class="btn clear-search me-2">
+                        <i class="fas fa-times"></i> LIMPIAR
+                    </button>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="filter-stock" id="filter-todos" checked>
+                        <label class="btn btn-outline-success btn-sm" for="filter-todos">TODOS</label>
+                        
+                        <input type="radio" class="btn-check" name="filter-stock" id="filter-disponible">
+                        <label class="btn btn-outline-success btn-sm" for="filter-disponible">DISPONIBLE</label>
+                        
+                        <input type="radio" class="btn-check" name="filter-stock" id="filter-agotado">
+                        <label class="btn btn-outline-danger btn-sm" for="filter-agotado">AGOTADOS</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grid de productos -->
+        <div id="productos-container">
+            <div class="productos-grid" id="productos-grid">
+                <!-- Productos desde Django -->
+                {% for item in productos %}
+                <div class="producto-item" 
+                     data-nombre="{{ item.producto.nombre|lower }}"
+                     data-precio="{{ item.producto.precio }}"
+                     data-categoria="{{ item.producto.descripcion|lower|default:'general' }}"
+                     data-stock="{{ item.producto.stock }}"
+                     data-producto-id="{{ item.producto.id }}">
+                    <div class="card card-producto stock-{{ item.color_stock }}">
+                        <div class="categoria-badge">{{ item.producto.descripcion|upper|default:'PRODUCTO' }}</div>
+                        <div class="card-header text-center">
+                            <h6 class="mb-0">{{ item.producto.nombre|upper }}</h6>
+                        </div>
+                        <div class="card-body text-center">
+                            <div class="precio-producto mb-2">${{ item.producto.precio|floatformat:0 }}</div>
+                            <div class="mb-3">
+                                <span class="badge bg-{{ item.color_stock }} fs-6 stock-badge">
+                                    STOCK: <span class="stock-actual">{{ item.producto.stock }}</span>
+                                </span>
+                            </div>
+                            <button class="btn {% if item.puede_vender %}btn-vender{% else %}btn-agotado{% endif %} w-100 btn-producto" 
+                                    {% if not item.puede_vender %}disabled{% endif %}
+                                    {% if item.puede_vender %}onclick="venderProducto({{ item.producto.id }}, '{{ item.producto.nombre|escapejs }}')"{% endif %}>
+                                {% if item.puede_vender %}
+                                    <i class="fas fa-shopping-cart"></i> VENDER
+                                {% else %}
+                                    <i class="fas fa-times"></i> AGOTADO
+                                {% endif %}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <!-- Mensaje cuando no hay productos -->
+                <div class="no-results">
+                    <i class="fas fa-box-open fa-3x mb-3 text-muted"></i>
+                    <h4>No hay productos configurados</h4>
+                    <p class="text-muted">
+                        Los productos se configuran desde el panel de administración.<br>
+                        Ve a <code>/admin/core/producto/</code> para agregar productos.
+                    </p>
+                    <a href="/admin/core/producto/" class="btn btn-success" target="_blank">
+                        <i class="fas fa-plus"></i> AGREGAR PRODUCTOS
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Mensaje cuando no hay resultados de búsqueda -->
+            <div class="no-results" id="no-results" style="display: none;">
+                <i class="fas fa-search fa-3x mb-3 text-muted"></i>
+                <h4>No se encontraron productos</h4>
+                <p class="text-muted">
+                    No hay productos que coincidan con tu búsqueda.<br>
+                    Intenta con otros términos o limpia el filtro.
+                </p>
+                <button type="button" class="btn btn-outline-info" onclick="clearSearch()">
+                    <i class="fas fa-refresh"></i> LIMPIAR BÚSQUEDA
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de confirmación de venta -->
+    <div class="modal fade" id="modalVenta" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content" style="background: #000; border: 2px solid #00ff00;">
+                <div class="modal-header" style="border-color: #00ff00;">
+                    <h5 class="modal-title text-success">CONFIRMACIÓN DE VENTA</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-success">
+                    <div class="text-center">
+                        <i class="fas fa-shopping-cart fa-3x mb-3"></i>
+                        <h4 id="modal-producto-nombre">Producto</h4>
+                        <h2 id="modal-producto-precio">$0</h2>
+                        <p>¿Confirmar venta de 1 unidad?</p>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-color: #00ff00;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">CANCELAR</button>
+                    <button type="button" class="btn btn-success" id="confirmar-venta">CONFIRMAR VENTA</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let productoSeleccionado = null;
+        let ventaEnProceso = false;
+
+        // Elementos del DOM
+        const searchInput = document.getElementById('search-input');
+        const clearSearchBtn = document.getElementById('clear-search');
+        const productosGrid = document.getElementById('productos-grid');
+        const noResults = document.getElementById('no-results');
+        const productosVisibles = document.getElementById('productos-visibles');
+        const productosTotales = document.getElementById('productos-totales');
+        
+        // Filtros de stock
+        const filterTodos = document.getElementById('filter-todos');
+        const filterDisponible = document.getElementById('filter-disponible');
+        const filterAgotado = document.getElementById('filter-agotado');
+
+        // Función para filtrar productos
+        function filterProducts() {
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            const stockFilter = document.querySelector('input[name="filter-stock"]:checked').id;
+            
+            const productos = document.querySelectorAll('.producto-item');
+            let visibleCount = 0;
+            
+            productos.forEach(producto => {
+                const nombre = producto.dataset.nombre.toLowerCase();
+                const precio = producto.dataset.precio;
+                const categoria = producto.dataset.categoria.toLowerCase();
+                const stock = parseInt(producto.dataset.stock);
+                
+                // Filtro por texto
+                const matchesSearch = searchTerm === '' || 
+                    nombre.includes(searchTerm) || 
+                    precio.includes(searchTerm) || 
+                    categoria.includes(searchTerm);
+                
+                // Filtro por stock
+                let matchesStock = true;
+                if (stockFilter === 'filter-disponible') {
+                    matchesStock = stock > 0;
+                } else if (stockFilter === 'filter-agotado') {
+                    matchesStock = stock === 0;
+                }
+                
+                // Mostrar/ocultar producto
+                if (matchesSearch && matchesStock) {
+                    producto.style.display = 'block';
+                    visibleCount++;
+                    
+                    // Highlight si coincide con búsqueda
+                    if (searchTerm && matchesSearch) {
+                        producto.querySelector('.card-producto').classList.add('producto-highlight');
+                        setTimeout(() => {
+                            producto.querySelector('.card-producto').classList.remove('producto-highlight');
+                        }, 2000);
+                    }
+                } else {
+                    producto.style.display = 'none';
+                }
+            });
+            
+            // Actualizar stats
+            productosVisibles.textContent = visibleCount;
+            productosTotales.textContent = productos.length;
+            
+            // Mostrar/ocultar mensaje de no resultados
+            if (visibleCount === 0 && productos.length > 0) {
+                productosGrid.style.display = 'none';
+                noResults.style.display = 'block';
+            } else {
+                productosGrid.style.display = 'grid';
+                noResults.style.display = 'none';
+            }
+        }
+
+        // Función para limpiar búsqueda
+        function clearSearch() {
+            searchInput.value = '';
+            filterTodos.checked = true;
+            filterProducts();
+            searchInput.focus();
+        }
+
+        // Event listeners
+        searchInput.addEventListener('input', filterProducts);
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                filterProducts();
+            }
+        });
+
+        clearSearchBtn.addEventListener('click', clearSearch);
+        
+        // Filtros de stock
+        filterTodos.addEventListener('change', filterProducts);
+        filterDisponible.addEventListener('change', filterProducts);
+        filterAgotado.addEventListener('change', filterProducts);
+
+        // Función para vender producto
+        function venderProducto(productoId, nombreProducto) {
+            if (ventaEnProceso) {
+                return;
+            }
+
+            const card = document.querySelector(`[data-producto-id="${productoId}"]`);
+            if (!card) return;
+            
+            const precioElement = card.querySelector('.precio-producto');
+            if (!precioElement) return;
+            
+            const precio = precioElement.textContent.trim();
+            
+            productoSeleccionado = {
+                id: productoId,
+                nombre: nombreProducto,
+                precio: precio
+            };
+            
+            // Actualizar modal
+            document.getElementById('modal-producto-nombre').textContent = nombreProducto;
+            document.getElementById('modal-producto-precio').textContent = precio;
+            
+            // Mostrar modal
+            const modal = new bootstrap.Modal(document.getElementById('modalVenta'));
+            modal.show();
+        }
+
+        // Confirmar venta
+        document.getElementById('confirmar-venta').addEventListener('click', function() {
+            if (!productoSeleccionado || ventaEnProceso) {
+                return;
+            }
+            
+            ventaEnProceso = true;
+            
+            const btn = this;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PROCESANDO...';
+            btn.disabled = true;
+            
+            const datosVenta = {
+                producto_id: productoSeleccionado.id,
+                cantidad: 1
+            };
+            
+            fetch('{% url "core:vender_producto" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify(datosVenta)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    actualizarProductoCard(productoSeleccionado.id, data.venta);
+                    actualizarStats();
+                    bootstrap.Modal.getInstance(document.getElementById('modalVenta')).hide();
+                    mostrarNotificacion('success', 'VENTA EXITOSA', data.message);
+                } else {
+                    mostrarNotificacion('error', 'ERROR', data.message);
+                }
+            })
+            .catch(error => {
+                mostrarNotificacion('error', 'ERROR DE CONEXIÓN', 'No se pudo conectar con el servidor');
+                console.error(error);
+            })
+            .finally(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                ventaEnProceso = false;
+                productoSeleccionado = null;
+            });
+        });
+
+        // Restablecer estado cuando se cierra el modal
+        document.getElementById('modalVenta').addEventListener('hidden.bs.modal', function() {
+            ventaEnProceso = false;
+            productoSeleccionado = null;
+            const btn = document.getElementById('confirmar-venta');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = 'CONFIRMAR VENTA';
+            }
+        });
+
+        // Actualizar card del producto después de venta
+        function actualizarProductoCard(productoId, ventaData) {
+            const card = document.querySelector(`[data-producto-id="${productoId}"]`);
+            if (!card) return;
+            
+            // Actualizar dataset del stock
+            card.dataset.stock = ventaData.nuevo_stock;
+            
+            const stockElement = card.querySelector('.stock-actual');
+            if (stockElement) {
+                stockElement.textContent = ventaData.nuevo_stock;
+            }
+            
+            const badge = card.querySelector('.stock-badge');
+            if (badge) {
+                badge.className = `badge bg-${ventaData.color_stock} fs-6 stock-badge`;
+                badge.innerHTML = `STOCK: <span class="stock-actual">${ventaData.nuevo_stock}</span>`;
+            }
+            
+            const btnProducto = card.querySelector('.btn-producto');
+            if (btnProducto) {
+                if (ventaData.puede_vender) {
+                    btnProducto.disabled = false;
+                    btnProducto.className = 'btn btn-vender w-100 btn-producto';
+                    btnProducto.innerHTML = '<i class="fas fa-shopping-cart"></i> VENDER';
+                    btnProducto.onclick = function() { venderProducto(productoId, ventaData.producto_nombre); };
+                } else {
+                    btnProducto.disabled = true;
+                    btnProducto.className = 'btn btn-agotado w-100 btn-producto';
+                    btnProducto.innerHTML = '<i class="fas fa-times"></i> AGOTADO';
+                    btnProducto.onclick = null;
+                }
+            }
+            
+            const cardElement = card.querySelector('.card-producto');
+            if (cardElement) {
+                cardElement.className = `card card-producto stock-${ventaData.color_stock}`;
+            }
+        }
+
+        // Actualizar estadísticas
+        function actualizarStats() {
+            fetch('{% url "core:obtener_stats_barra" %}')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('stat-productos').textContent = data.stats.productos_activos;
+                    document.getElementById('stat-agotados').textContent = data.stats.productos_agotados;
+                    document.getElementById('stat-ventas').textContent = data.stats.mis_ventas_hoy;
+                    document.getElementById('stat-ingresos').textContent = '$' + Math.round(data.stats.total_vendido_hoy);
+                }
+            })
+            .catch(error => {
+                console.log('Stats temporalmente no disponibles');
+            });
+        }
+
+        // Mostrar notificación
+        function mostrarNotificacion(tipo, titulo, mensaje) {
+            const colores = {
+                'success': 'alert-success',
+                'error': 'alert-danger',
+                'info': 'alert-info'
+            };
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert ${colores[tipo]} alert-dismissible fade show notification`;
+            alertDiv.innerHTML = `
+                <strong>${titulo}</strong><br>
+                ${mensaje}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+
+        // Obtener CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Auto-actualizar stats cada 60 segundos
+        setInterval(actualizarStats, 60000);
+
+        // Inicializar filtros
+        document.addEventListener('DOMContentLoaded', function() {
+            filterProducts();
+            console.log('Sistema de barra DMT 69 cargado correctamente');
+            
+            // Calcular totales iniciales
+            const productos = document.querySelectorAll('.producto-item');
+            productosVisibles.textContent = productos.length;
+            productosTotales.textContent = productos.length;
+        });
+
+        // Focus en el buscador al cargar
+        searchInput.focus();
+    </script>
+</body>
+</html>

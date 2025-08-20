@@ -5,12 +5,20 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Sum
 from django.db import transaction
 from .models import Asistente, Categoria, PerfilUsuario
 from .decorators import entrada_o_admin, solo_entrada, ajax_login_required
 
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+
+
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+
+# Importar modelos desde core
+from core.models import Producto, VentaBarra, MovimientoStock, Asistente, PerfilUsuario
+from core.decorators import ajax_login_required
 
 
     # Agregar estas importaciones al inicio del archivo views.py
@@ -21,22 +29,87 @@ from openpyxl.utils import get_column_letter
 from datetime import datetime
 import io
 
-# ===== DASHBOARD PRINCIPAL =====
+
+# ===== DASHBOARD PRINCIPAL CORREGIDO =====
 @login_required
 def dashboard(request):
+    """Dashboard principal que redirige según el rol del usuario"""
     try:
         perfil = request.user.perfilusuario
         if perfil.rol in ["entrada", "admin"]:
             return dashboard_entrada(request)
         elif perfil.rol == "barra":
-            messages.info(request, "Dashboard de barra en construcción")
-            return dashboard_entrada(request)  # Temporal
+            # TEMPORAL: usar dashboard_entrada hasta que esté listo el módulo barra
+            messages.info(request, "🍺 Sistema de barra en desarrollo. Usando dashboard temporal.")
+            return redirect('core:dashboard_barra')
         else:
             messages.error(request, "Rol no reconocido")
             return redirect("admin:index")
     except PerfilUsuario.DoesNotExist:
         messages.error(request, "Usuario sin perfil. Contacta al administrador.")
         return redirect("admin:index")
+
+
+def dashboard_barra_temporal(request):
+    """Dashboard temporal para usuarios de barra usando funcionalidad existente"""
+    hoy = datetime.now().date()
+
+    # Importar modelos de barra si existen, sino usar valores por defecto
+    try:
+        from .models import Producto, VentaBarra, MovimientoStock
+        
+        # Estadísticas básicas de barra
+        stats = {
+            "total_productos": Producto.objects.filter(activo=True).count(),
+            "productos_agotados": Producto.objects.filter(stock=0, activo=True).count(),
+            "ventas_hoy": VentaBarra.objects.filter(
+                vendedor=request.user, fecha__date=hoy
+            ).count(),
+            "ingresos_hoy": VentaBarra.objects.filter(
+                vendedor=request.user, fecha__date=hoy
+            ).aggregate(total=Sum('total'))['total'] or 0,
+        }
+        
+        # Lista de productos para mostrar
+        productos = []
+        for producto in Producto.objects.filter(activo=True).order_by('nombre')[:12]:  # Máximo 12 productos
+            # Color según stock
+            if producto.stock == 0:
+                color_stock = 'danger'
+            elif producto.stock <= producto.stock_minimo:
+                color_stock = 'warning'
+            else:
+                color_stock = 'success'
+                
+            productos.append({
+                'producto': producto,
+                'color_stock': color_stock,
+                'puede_vender': producto.stock > 0
+            })
+        
+        context = {
+            "stats": stats,
+            "productos": productos,
+            "es_barra": True,
+            "mensaje_desarrollo": "Sistema de barra en desarrollo - Vista temporal"
+        }
+        
+    except ImportError:
+        # Si no existen los modelos de barra, mostrar mensaje básico
+        context = {
+            "stats": {
+                "total_productos": 0,
+                "productos_agotados": 0,
+                "ventas_hoy": 0,
+                "ingresos_hoy": 0,
+            },
+            "productos": [],
+            "es_barra": True,
+            "mensaje_desarrollo": "Sistema de barra en desarrollo - Modelos no encontrados"
+        }
+    
+    return render(request, "core/dashboard_barra_temporal.html", context)
+
 
 
 def dashboard_entrada(request):
@@ -723,3 +796,361 @@ def exportar_excel_simple(request):
         ])
     
     return response
+
+
+
+
+# --------- Barras y ventas -------
+# AGREGAR ESTAS FUNCIONES AL FINAL DE core/views.py
+
+# REEMPLAZA ESTAS FUNCIONES EN TU core/views.py
+
+# ===== SISTEMA DE BARRA =====
+
+@login_required
+def dashboard_barra(request):
+    """Dashboard del sistema de barra"""
+    try:
+        perfil = request.user.perfilusuario
+        if perfil.rol not in ['barra', 'admin']:
+            messages.error(request, 'No tienes permisos para acceder al sistema de barra')
+            return redirect('core:dashboard')
+    except PerfilUsuario.DoesNotExist:
+        messages.error(request, 'Usuario sin perfil asignado')
+        return redirect('admin:index')
+    
+    hoy = datetime.now().date()
+    
+    # Estadísticas
+    stats = {
+        'productos_activos': Producto.objects.filter(activo=True, stock__gt=0).count(),
+        'productos_agotados': Producto.objects.filter(activo=True, stock=0).count(),
+        'mis_ventas_hoy': VentaBarra.objects.filter(
+            vendedor=request.user, 
+            fecha__date=hoy
+        ).count(),
+        'total_vendido_hoy': VentaBarra.objects.filter(
+            vendedor=request.user, 
+            fecha__date=hoy
+        ).aggregate(total=Sum('total'))['total'] or 0
+    }
+    
+    # Lista de productos con información de stock
+    productos_info = []
+    productos = Producto.objects.filter(activo=True).order_by('nombre')
+    
+    for producto in productos:
+        # Determinar color del stock
+        if producto.stock == 0:
+            color_stock = 'danger'
+        elif producto.stock <= producto.stock_minimo:
+            color_stock = 'warning'
+        else:
+            color_stock = 'success'
+        
+        productos_info.append({
+            'producto': producto,
+            'color_stock': color_stock,
+            'puede_vender': producto.stock > 0
+        })
+    
+    context = {
+        'stats': stats,
+        'productos': productos_info,
+        'user': request.user
+    }
+    
+    return render(request, 'core/dashboard_barra.html', context)
+
+
+# REEMPLAZA LA FUNCIÓN vender_producto EN core/views.py
+
+@require_http_methods(["POST"])
+@csrf_exempt
+@ajax_login_required
+def vender_producto(request):
+    """Procesar venta de un producto - CORREGIDO CON COMPENSACIÓN +1"""
+    try:
+        perfil = request.user.perfilusuario
+        if perfil.rol not in ['barra', 'admin']:
+            return JsonResponse({'success': False, 'message': 'Sin permisos de barra'})
+    except PerfilUsuario.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Usuario sin perfil'})
+    
+    try:
+        data = json.loads(request.body)
+        producto_id = data.get('producto_id')
+        cantidad = 1  # SIEMPRE 1 para evitar problemas
+        
+        if not producto_id:
+            return JsonResponse({'success': False, 'message': 'ID de producto requerido'})
+        
+        # Obtener producto con bloqueo
+        try:
+            with transaction.atomic():
+                producto = Producto.objects.select_for_update().get(id=producto_id, activo=True)
+                
+                # Verificar stock ANTES de la venta
+                if producto.stock < cantidad:
+                    return JsonResponse({
+                        'success': False, 
+                        'message': f'Stock insuficiente. Disponible: {producto.stock}'
+                    })
+                
+                # Guardar stock original para referencia
+                stock_original = producto.stock
+                
+                # Crear la venta (esto va a descontar automáticamente el stock)
+                venta = VentaBarra.objects.create(
+                    asistente=None,
+                    producto=producto,
+                    cantidad=cantidad,
+                    precio_unitario=producto.precio,
+                    usa_consumo_incluido=False,
+                    vendedor=request.user
+                )
+                
+                # COMPENSACIÓN: Agregar +1 al stock para anular el doble descuento
+                producto.refresh_from_db()  # Obtener el stock actualizado
+                producto.stock += 1  # Compensar el doble descuento
+                producto.save(update_fields=['stock'])
+                
+                # Verificar que el stock final sea correcto (original - 1)
+                producto.refresh_from_db()
+                stock_esperado = stock_original - cantidad
+                
+                if producto.stock != stock_esperado:
+                    # Si aún no está correcto, forzar el stock correcto
+                    producto.stock = stock_esperado
+                    producto.save(update_fields=['stock'])
+                
+                # Determinar color del nuevo stock
+                if producto.stock == 0:
+                    nuevo_color_stock = 'danger'
+                elif producto.stock <= producto.stock_minimo:
+                    nuevo_color_stock = 'warning'
+                else:
+                    nuevo_color_stock = 'success'
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Venta de {producto.nombre} exitosa',
+                    'venta': {
+                        'id': venta.id,
+                        'producto_nombre': producto.nombre,
+                        'cantidad': cantidad,
+                        'total': float(venta.total),
+                        'nuevo_stock': producto.stock,
+                        'color_stock': nuevo_color_stock,
+                        'puede_vender': producto.stock > 0,
+                        'cliente': 'Cliente General',
+                        'hora': venta.fecha.strftime('%H:%M:%S')
+                    }
+                })
+                
+        except Producto.DoesNotExist:
+            return JsonResponse({'success': False, 'message': 'Producto no encontrado'})
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Formato JSON inválido'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+
+# OPCIONAL: Función de DEBUG para verificar stock después de ventas
+@login_required
+def debug_stock(request, producto_id):
+    """Función temporal para verificar el stock de un producto"""
+    try:
+        producto = Producto.objects.get(id=producto_id)
+        return JsonResponse({
+            'producto': producto.nombre,
+            'stock_actual': producto.stock,
+            'timestamp': datetime.now().strftime('%H:%M:%S')
+        })
+    except Producto.DoesNotExist:
+        return JsonResponse({'error': 'Producto no encontrado'})
+
+@ajax_login_required
+def obtener_stats_barra(request):
+    """Obtener estadísticas actualizadas para el dashboard"""
+    try:
+        hoy = datetime.now().date()
+        
+        stats = {
+            'productos_activos': Producto.objects.filter(activo=True, stock__gt=0).count(),
+            'productos_agotados': Producto.objects.filter(activo=True, stock=0).count(),
+            'mis_ventas_hoy': VentaBarra.objects.filter(
+                vendedor=request.user, 
+                fecha__date=hoy
+            ).count(),
+            'total_vendido_hoy': float(VentaBarra.objects.filter(
+                vendedor=request.user, 
+                fecha__date=hoy
+            ).aggregate(total=Sum('total'))['total'] or 0)
+        }
+        
+        return JsonResponse({'success': True, 'stats': stats})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+
+
+@ajax_login_required
+def buscar_asistente_barra(request):
+    """Buscar asistente por cédula para la venta"""
+    cc = request.GET.get('cc', '').strip()
+    
+    if not cc:
+        return JsonResponse({'success': False, 'message': 'Cédula requerida'})
+    
+    try:
+        asistente = Asistente.objects.get(cc=cc)
+        
+        if not asistente.ha_ingresado:
+            return JsonResponse({
+                'success': False,
+                'message': f'{asistente.nombre} no ha ingresado al evento'
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'asistente': {
+                'nombre': asistente.nombre,
+                'cc': asistente.cc,
+                'categoria': asistente.categoria.nombre,
+                'consumos_disponibles': asistente.consumos_disponibles,
+                'puede_usar_consumo': asistente.consumos_disponibles > 0
+            }
+        })
+        
+    except Asistente.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Asistente no encontrado'})
+
+
+@login_required
+def mis_ventas_barra(request):
+    """Ver mis ventas del día"""
+    try:
+        perfil = request.user.perfilusuario
+        if perfil.rol not in ['barra', 'admin']:
+            messages.error(request, 'No tienes permisos para ver ventas')
+            return redirect('core:dashboard')
+    except PerfilUsuario.DoesNotExist:
+        messages.error(request, 'Usuario sin perfil asignado')
+        return redirect('admin:index')
+    
+    fecha = request.GET.get('fecha')
+    if fecha:
+        try:
+            fecha_filtro = datetime.strptime(fecha, '%Y-%m-%d').date()
+        except ValueError:
+            fecha_filtro = datetime.now().date()
+    else:
+        fecha_filtro = datetime.now().date()
+    
+    # Obtener ventas del día
+    ventas = VentaBarra.objects.filter(
+        vendedor=request.user,
+        fecha__date=fecha_filtro
+    ).order_by('-fecha').select_related('producto', 'asistente')
+    
+    # Estadísticas del día
+    stats_ventas = {
+        'total_ventas': ventas.count(),
+        'productos_vendidos': ventas.aggregate(total=Sum('cantidad'))['total'] or 0,
+        'total_ingresos': ventas.aggregate(total=Sum('total'))['total'] or 0
+    }
+    
+    context = {
+        'ventas': ventas,
+        'stats_ventas': stats_ventas,
+        'fecha': fecha_filtro,
+        'user': request.user
+    }
+    
+    return render(request, 'core/mis_ventas_barra.html', context)
+
+
+@login_required
+def exportar_reporte_barra(request):
+    """Exportar reporte de ventas a Excel"""
+    try:
+        perfil = request.user.perfilusuario
+        if perfil.rol not in ['barra', 'admin']:
+            messages.error(request, 'No tienes permisos')
+            return redirect('core:dashboard')
+    except PerfilUsuario.DoesNotExist:
+        messages.error(request, 'Usuario sin perfil')
+        return redirect('admin:index')
+    
+    try:
+        hoy = datetime.now().date()
+        
+        # Obtener ventas del día
+        ventas = VentaBarra.objects.filter(
+            vendedor=request.user,
+            fecha__date=hoy
+        ).order_by('-fecha').select_related('producto', 'asistente')
+        
+        # Crear workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"Ventas {request.user.username}"
+        
+        # Estilos
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="28a745", end_color="28a745", fill_type="solid")
+        center_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Headers
+        headers = ['HORA', 'PRODUCTO', 'CANTIDAD', 'PRECIO UNIT.', 'TOTAL', 'CLIENTE']
+        
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_alignment
+        
+        # Datos
+        for row_num, venta in enumerate(ventas, 2):
+            ws.cell(row=row_num, column=1, value=venta.fecha.strftime('%H:%M:%S'))
+            ws.cell(row=row_num, column=2, value=venta.producto.nombre)
+            ws.cell(row=row_num, column=3, value=venta.cantidad)
+            ws.cell(row=row_num, column=4, value=float(venta.precio_unitario))
+            ws.cell(row=row_num, column=5, value=float(venta.total))
+            ws.cell(row=row_num, column=6, value=venta.asistente.nombre if venta.asistente else "Cliente General")
+        
+        # Ajustar columnas
+        column_widths = [15, 25, 10, 15, 15, 25]
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+        
+        # Totales
+        total_row = len(ventas) + 3
+        ws.cell(row=total_row, column=1, value="TOTALES:")
+        ws.cell(row=total_row, column=1).font = Font(bold=True)
+        
+        total_productos = ventas.aggregate(total=Sum('cantidad'))['total'] or 0
+        total_ingresos = ventas.aggregate(total=Sum('total'))['total'] or 0
+        
+        ws.cell(row=total_row, column=3, value=total_productos)
+        ws.cell(row=total_row, column=5, value=float(total_ingresos))
+        
+        # Información adicional
+        ws.cell(row=total_row + 2, column=1, value=f"Fecha: {hoy.strftime('%d/%m/%Y')}")
+        ws.cell(row=total_row + 3, column=1, value=f"Vendedor: {request.user.username}")
+        ws.cell(row=total_row + 4, column=1, value=f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        
+        # Respuesta HTTP
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"ventas_{request.user.username}_{hoy.strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        wb.save(response)
+        return response
+        
+    except Exception as e:
+        messages.error(request, f'Error generando reporte: {str(e)}')
+        return redirect('core:mis_ventas_barra')

@@ -131,14 +131,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <h2>{{ stats.mis_verificaciones }}</h2>
-                        <small>MIS VERIFICACIONES</small>
-                    </div>
-                </div>
-            </div>
+
         </div>
 
         <!-- Main Tabs -->
@@ -475,9 +468,193 @@
             });
         };
 
-        window.editarAsistente = function(cc) {
-            window.open(`/asistentes/${cc}/editar/`, '_blank');
-        };
+        // REEMPLAZA la función editarAsistente en dashboard_entrada.html
+
+window.editarAsistente = function(cc) {
+    if (!cc) {
+        alert('Error: Cédula no válida');
+        return;
+    }
+    
+    // Mostrar modal de loading primero
+    mostrarModalLoading();
+    
+    // Cargar el contenido de la página de edición
+    const url = `{% url 'core:editar_asistente' 'PLACEHOLDER' %}`.replace('PLACEHOLDER', cc);
+    
+    fetch(url)
+    .then(response => response.text())
+    .then(html => {
+        // Extraer solo el contenido del body de la página
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Buscar el formulario y el contenido principal
+        const container = doc.querySelector('.container') || doc.body;
+        let contenido = container.innerHTML;
+        
+        // Crear el modal con el contenido
+        mostrarModalEdicion(contenido, cc);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        cerrarModalLoading();
+        alert('Error al cargar el formulario de edición');
+    });
+};
+
+function mostrarModalLoading() {
+    const loadingHtml = `
+        <div class="modal fade" id="editModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content" style="background: #000; border: 2px solid #00ff00;">
+                    <div class="modal-body text-center p-5">
+                        <i class="fas fa-spinner fa-spin fa-3x text-success mb-3"></i>
+                        <h5 class="text-success">Cargando formulario de edición...</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remover modal anterior si existe
+    const existingModal = document.getElementById('editModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    document.body.insertAdjacentHTML('beforeend', loadingHtml);
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+function mostrarModalEdicion(contenido, cc) {
+    const modalHtml = `
+        <div class="modal fade" id="editModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content" style="background: #000; border: 2px solid #00ff00;">
+                    <div class="modal-header" style="border-color: #00ff00;">
+                        <h5 class="modal-title text-success">
+                            <i class="fas fa-edit"></i> EDITAR ASISTENTE - CC: ${cc}
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                        ${contenido}
+                    </div>
+                    <div class="modal-footer" style="border-color: #00ff00;">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times"></i> CERRAR
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="enviarFormularioModal()">
+                            <i class="fas fa-save"></i> GUARDAR CAMBIOS
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Reemplazar modal
+    document.getElementById('editModal').outerHTML = modalHtml;
+    
+    // Mostrar modal
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+    
+    // Limpiar cuando se cierre
+    document.getElementById('editModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+        if (typeof cargarLista === 'function') {
+            cargarLista();
+        }
+    });
+    
+    // Interceptar el formulario para enviarlo via AJAX
+    interceptarFormulario();
+}
+
+function interceptarFormulario() {
+    const form = document.querySelector('#editModal form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            enviarFormularioModal();
+        });
+    }
+}
+
+function enviarFormularioModal() {
+    const form = document.querySelector('#editModal form');
+    if (!form) {
+        alert('No se encontró el formulario');
+        return;
+    }
+    
+    // Deshabilitar botón
+    const btnGuardar = document.querySelector('#editModal .btn-success');
+    const textoOriginal = btnGuardar.innerHTML;
+    btnGuardar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> GUARDANDO...';
+    btnGuardar.disabled = true;
+    
+    // Enviar formulario
+    const formData = new FormData(form);
+    
+    fetch(form.action || form.getAttribute('action'), {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            // Mostrar mensaje de éxito
+            mostrarMensajeModal('success', '✅ Asistente actualizado exitosamente');
+            
+            // Cerrar modal después de 2 segundos
+            setTimeout(() => {
+                bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                location.reload(); // Recargar para ver cambios
+            }, 2000);
+        } else {
+            mostrarMensajeModal('error', 'Error al guardar los cambios');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        mostrarMensajeModal('error', 'Error de conexión');
+    })
+    .finally(() => {
+        // Restaurar botón
+        btnGuardar.innerHTML = textoOriginal;
+        btnGuardar.disabled = false;
+    });
+}
+
+function mostrarMensajeModal(tipo, mensaje) {
+    const alertClass = tipo === 'success' ? 'alert-success' : 'alert-danger';
+    const icon = tipo === 'success' ? 'fa-check' : 'fa-exclamation-triangle';
+    
+    const mensajeHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show mt-3">
+            <i class="fas ${icon}"></i> ${mensaje}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Agregar mensaje al modal
+    const modalBody = document.querySelector('#editModal .modal-body');
+    if (modalBody) {
+        modalBody.insertAdjacentHTML('afterbegin', mensajeHtml);
+    }
+}
+
+function cerrarModalLoading() {
+    const modal = document.getElementById('editModal');
+    if (modal) {
+        bootstrap.Modal.getInstance(modal)?.hide();
+        modal.remove();
+    }
+}
 
         // ===== SCANNER QR =====
 

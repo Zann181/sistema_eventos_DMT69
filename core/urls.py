@@ -36,4 +36,12 @@ urlpatterns = [
     path('exportar-excel/', views.exportar_excel, name='exportar_excel'),
     path('exportar-csv/', views.exportar_excel_simple, name='exportar_csv'),
 
+    # ===== ÃREA BARRA =====
+    path("barra/", views.dashboard_barra, name="dashboard_barra"),
+    path("barra/vender/", views.vender_producto, name="vender_producto"),
+    path("barra/stats/", views.obtener_stats_barra, name="obtener_stats_barra"),
+    path("barra/buscar-asistente/", views.buscar_asistente_barra, name="buscar_asistente_barra"),
+    path("barra/mis-ventas/", views.mis_ventas_barra, name="mis_ventas_barra"),
+    path("barra/exportar-reporte/", views.exportar_reporte_barra, name="exportar_reporte_barra"),
+
 ]
