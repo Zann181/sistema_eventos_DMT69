@@ -4,6 +4,8 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
+from core.views import custom_logout  # Importar la vista personalizada
+
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -12,7 +14,9 @@ urlpatterns = [
         auth_views.LoginView.as_view(template_name="registration/login.html"),
         name="login",
     ),
-    path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+   # path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+    path("logout/", custom_logout, name="logout"),
+
     path("", include("core.urls")),
 
     

@@ -12,6 +12,7 @@ ngrok http https://localhost:8000
 
 
 
+
 Cambiar nombre del evento core/models.py
 linea 235
   

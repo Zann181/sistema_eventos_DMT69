@@ -30,6 +30,18 @@ from datetime import datetime
 import io
 
 
+# En core/views.py - Agregar esta función al final del archivo
+
+from django.contrib.auth import logout
+
+def custom_logout(request):
+    """Vista personalizada de logout que garantiza redirección al login"""
+    if request.user.is_authenticated:
+        username = request.user.username
+        logout(request)
+        messages.success(request, f"Sesión de {username} cerrada exitosamente")
+    return redirect('login')  # Garantiza que siempre vaya al login
+
 # ===== DASHBOARD PRINCIPAL CORREGIDO =====
 @login_required
 def dashboard(request):
