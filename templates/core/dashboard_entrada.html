@@ -52,6 +52,32 @@
             border-color: #32CD32;
             color: #fff;
         }
+        .summary-card {
+            background: #222;
+            border: 1px solid rgba(0, 255, 0, 0.35);
+        }
+        .summary-card .total-value {
+            font-size: clamp(2rem, 4vw, 2.6rem);
+            line-height: 1.1;
+            color: #7aff7a;
+        }
+        .summary-card .meta {
+            color: rgba(122, 255, 122, 0.7);
+        }
+        .category-card .card-header,
+        .category-card .card-footer {
+            background: transparent;
+            border-color: rgba(0, 255, 0, 0.25);
+        }
+        .category-card .table-responsive {
+            max-height: 240px;
+            overflow: auto;
+        }
+        .category-card table th,
+        .category-card table td {
+            white-space: nowrap;
+            font-size: 0.8rem;
+        }
         .form-control {
             background: #1a1a1a;
             border: 1px solid #00ff00;
@@ -105,33 +131,64 @@
     </nav>
 
     <div class="container-fluid mt-3">
-        <!-- Stats Row -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <h2>{{ stats.total_asistentes }}</h2>
-                        <small>REGISTRADOS</small>
+        <!-- Resumen compacto: categorías y total -->
+        <div class="row g-3 mb-4 align-items-start">
+            <div class="col-12 col-xl-4">
+                <div class="card summary-card p-3">
+                    <span class="text-uppercase small text-muted">Total asistentes</span>
+                    <div class="total-value mb-2" data-number="{{ total_recaudado|default:'0' }}" data-format="currency">
+                        ${{ total_recaudado|default:"0" }}
                     </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <h2>{{ stats.asistentes_ingresados }}</h2>
-                        <small>INGRESARON</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <h2>{{ stats.pendientes }}</h2>
-                        <small>PENDIENTES</small>
-                    </div>
+                    <span class="meta small">
+                        Registros:
+                        <span data-number="{{ registros|default:'0' }}">{{ registros|default:"0" }}</span>
+                    </span>
                 </div>
             </div>
 
+            <div class="col-12 col-xl-8">
+                <div class="card category-card h-100">
+                    <div class="card-header pb-2">
+                        <h6 class="mb-0 text-success">Categorías</h6>
+                        <small class="text-muted">Ingresaron / pendientes / total · $ subtotal</small>
+                    </div>
+                    {% if categorias %}
+                    <div class="table-responsive px-3 pb-3">
+                        <table class="table table-dark table-bordered table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th>Ingresaron</th>
+                                    <th>Pendientes</th>
+                                    <th>Total</th>
+                                    <th>Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in categorias %}
+                                <tr>
+                                    <td>{{ c.nombre }}</td>
+                                    <td data-number="{{ c.ingresados|default:'0' }}">{{ c.ingresados|default:"0" }}</td>
+                                    <td data-number="{{ c.pendientes|default:'0' }}">{{ c.pendientes|default:"0" }}</td>
+                                    <td data-number="{{ c.total|default:'0' }}">{{ c.total|default:"0" }}</td>
+                                    <td data-number="{{ c.subtotal|default:'0' }}" data-format="currency">
+                                        $ {{ c.subtotal|default:"0" }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer pt-2">
+                        <small class="text-muted">Los totales corresponden a la suma de consumos por categoría.</small>
+                    </div>
+                    {% else %}
+                    <div class="card-body">
+                        <div class="small">Sin datos de categorías</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
 
         <!-- Main Tabs -->
@@ -153,11 +210,54 @@
                             <i class="fas fa-plus"></i> NUEVO ASISTENTE
                         </button>
                     </li>
+                    <li class="nav-item">
+                    <button class="nav-link" id="evento-tab" data-bs-toggle="tab" data-bs-target="#evento" type="button">
+                        <i class="fas fa-calendar-day"></i> DÍA DEL EVENTO
+                    </button>
+                    </li>
+
 
                 </ul>
             </div>
             <div class="card-body">
                 <div class="tab-content" id="mainTabsContent">
+                    <!-- TAB: DÍA DEL EVENTO -->
+                    <div class="tab-pane fade" id="evento" role="tabpanel">
+                        <div class="row justify-content-center">
+                            <div class="col-md-6">
+                            <h4 class="text-center mb-4">REGISTRO DÍA DEL EVENTO</h4>
+
+                            {% if messages %}
+                                {% for message in messages %}
+                                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                                {% endfor %}
+                            {% endif %}
+
+                            <!-- 👇 aquí añadimos el id -->
+                            <form method="POST" action="{% url 'core:registro_evento_dia' %}" id="form-evento">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label class="form-label">Cantidad de asistentes:</label>
+                                    <input type="number" name="cantidad" class="form-control" min="1" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Precio de entrada:</label>
+                                    <input type="number" step="0.01" name="precio" class="form-control" min="0" required>
+                                </div>
+                                <input type="hidden" name="observacion" value="evento">
+                                <button type="submit" class="btn btn-success w-100 btn-lg">
+                                    <i class="fas fa-save"></i> REGISTRAR INGRESO
+                                </button>
+                            </form>
+
+                            <!-- 👇 justo después del formulario -->
+                            <div id="evento-result"></div>
+
+                            </div>
+                        </div>
+                        </div>
+
+
                     
                     <!-- TAB 1: SCANNER QR -->
                     <div class="tab-pane fade show active" id="scanner" role="tabpanel">
@@ -245,11 +345,17 @@
                                         <select name="categoria" class="form-control" required>
                                             <option value="">Seleccionar...</option>
                                             {% for categoria in categorias %}
-                                            <option value="{{ categoria.pk }}">
-                                                {{ categoria.nombre }} - {{ categoria.consumos_incluidos }} consumos
+                                            <option value="{{ categoria.pk }}" data-precio="{{ categoria.precio }}">
+                                                {{ categoria.nombre }} 
                                             </option>
                                             {% endfor %}
                                         </select>
+                                    </div>
+                                    <!-- Nuevo campo: precio pagado por la entrada -->
+                                    <div class="mb-3">
+                                        <label class="form-label">PRECIO PAGADO:</label>
+                                        <input type="number" name="consumos_disponibles" id="valor-pagado"
+                                               class="form-control" step="0.01" min="0" required>
                                     </div>
                                     <button type="submit" class="btn btn-success w-100 btn-lg">
                                         <i class="fas fa-save"></i> CREAR ASISTENTE
@@ -279,6 +385,7 @@
             </div>
         </div>
     </div>
+
 
     <!-- MODAL 1: Verificación de Datos (NUEVO) -->
     <div class="modal fade" id="verificationModal" tabindex="-1" aria-labelledby="verificationModalLabel" aria-hidden="true">
@@ -327,6 +434,27 @@
     <script>
         let html5QrCode = null;
         let isScanning = false;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const numberFormatter = new Intl.NumberFormat('es-CL');
+            document.querySelectorAll('[data-number]').forEach(function(element) {
+                const rawValue = element.getAttribute('data-number');
+                if (rawValue === null || rawValue === '') {
+                    return;
+                }
+                const normalizedValue = String(rawValue).replace(/\./g, '').replace(/,/g, '.');
+                const numericValue = Number(normalizedValue);
+                if (!Number.isFinite(numericValue)) {
+                    return;
+                }
+                const formatted = numberFormatter.format(numericValue);
+                if (element.dataset.format === 'currency') {
+                    element.textContent = '$ ' + formatted;
+                } else {
+                    element.textContent = formatted;
+                }
+            });
+        });
 
         // ===== FUNCIONES GLOBALES PARA PAGINACIÓN =====
         window.irAPagina = function(pagina) {
@@ -414,6 +542,31 @@
                 }
             });
         };
+
+        // ===== REGISTRO DÍA DEL EVENTO =====
+        document.getElementById("form-evento").addEventListener("submit", async function(e){
+            e.preventDefault();
+            const formData = new FormData(this);
+
+            const response = await fetch(this.action, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": formData.get("csrfmiddlewaretoken"),
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+            const resultDiv = document.getElementById("evento-result");
+
+            if (data.success) {
+                resultDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                this.reset();
+            } else {
+                resultDiv.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+            }
+        });
+
 
         window.eliminarAsistente = function(cc) {
             if (!confirm('¿ELIMINAR este asistente permanentemente?')) return;
@@ -1178,6 +1331,60 @@ function cerrarModalLoading() {
                 });
             }
         }, 30000);
+
+        // ===== ACTUALIZAR PRECIO PAGADO SEGÚN CATEGORÍA =====
+        document.addEventListener('DOMContentLoaded', function() {
+            const selectCategoria = document.querySelector('#form-crear select[name="categoria"]');
+            const valorPagadoInput = document.getElementById('valor-pagado');
+            // Obtener el diccionario de precios enviado desde el backend
+            let preciosDict = {};
+            try {
+                preciosDict = JSON.parse('{{ categoria_precios_json|default:"{}"|safe }}');
+            } catch (e) {
+                preciosDict = {};
+            }
+            if (selectCategoria && valorPagadoInput) {
+                selectCategoria.addEventListener('change', function() {
+                    const selectedOption = this.options[this.selectedIndex];
+                    const catId = this.value;
+                    let precio = '';
+                    // 1) Intentar leer el atributo data-precio del option
+                    if (selectedOption) {
+                        precio = selectedOption.getAttribute('data-precio');
+                    }
+                    // 2) Si no existe o está vacío, buscar en el diccionario del contexto
+                    if (!precio) {
+                        if (catId && Object.prototype.hasOwnProperty.call(preciosDict, catId)) {
+                            precio = preciosDict[catId];
+                        }
+                    }
+                    // Si no se encontró precio, avisar en consola y dejar el campo vacío
+                    if (!precio) {
+                        console.warn(`[AUTO-PRECIO] No se encontró precio para la categoría con id=${catId}.`, {
+                            optionDataPrecio: selectedOption ? selectedOption.getAttribute('data-precio') : null,
+                            preciosDict: preciosDict
+                        });
+                        valorPagadoInput.value = '';
+                    } else {
+                        // Convertir a número. Limpia puntos como separadores de miles y convierte comas en punto decimal
+                        let precioStr = String(precio);
+                        // Elimina cualquier espacio
+                        precioStr = precioStr.trim();
+                        // Elimina separadores de miles (puntos)
+                        precioStr = precioStr.replace(/\./g, '');
+                        // Convierte comas decimales en puntos
+                        precioStr = precioStr.replace(/,/g, '.');
+                        const parsed = parseFloat(precioStr);
+                        if (!isNaN(parsed)) {
+                            valorPagadoInput.value = parsed;
+                        } else {
+                            console.warn(`[AUTO-PRECIO] No se pudo convertir el precio '${precio}' a número para la categoría id=${catId}.`);
+                            valorPagadoInput.value = '';
+                        }
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>

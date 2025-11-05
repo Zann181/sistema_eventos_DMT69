@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views_entrada import registrar_evento_dia  # <-- añadir
 
 app_name = "core"
 
@@ -26,7 +27,9 @@ urlpatterns = [
         views.buscar_asistente_qr,
         name="buscar_asistente_qr",
     ),
-
+    
+    path('entrada/registro-evento-dia/', registrar_evento_dia, name='registro_evento_dia'),  # <-- añadir
+   
     path('entrada/verificar-qr/', views.verificar_qr, name='verificar_qr'),
     
     # AGREGAR ESTAS DOS LÍNEAS:
@@ -44,8 +47,13 @@ urlpatterns = [
     path("barra/mis-ventas/", views.mis_ventas_barra, name="mis_ventas_barra"),
     path("barra/exportar-reporte/", views.exportar_reporte_barra, name="exportar_reporte_barra"),
 
+    # Acciones rápidas de barra
+    path("barra/crear-producto-rapido/", views.crear_producto_rapido, name="crear_producto_rapido"),
+    path("barra/sumar-descripcion/", views.sumar_descripcion_producto, name="sumar_descripcion_producto"),
+
     # ===== FUNCIONES AUXILIARES PARA SISTEMA DE BARRA =====
     path("barra/actualizar-stock-inicial/", views.actualizar_stock_inicial_dia, name="actualizar_stock_inicial_dia"),
     path("barra/debug-ventas/", views.debug_ventas_calculadas, name="debug_ventas_calculadas"),
+
 
 ]

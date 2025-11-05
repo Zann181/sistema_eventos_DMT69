@@ -14,6 +14,14 @@ from openpyxl import Workbook
 from .models import Asistente, Categoria, PerfilUsuario
 from .decorators import entrada_o_admin, solo_entrada, ajax_login_required
 
+
+from decimal import Decimal, ROUND_HALF_UP
+import uuid
+from django.utils import timezone
+
+from django.http import HttpResponse
+from .models import Asistente
+
 # ===== DASHBOARD ENTRADA =====
 
 
@@ -22,7 +30,6 @@ def dashboard_entrada(request):
     """Dashboard específico para personal de entrada"""
     hoy = datetime.now().date()
 
-    # Estadísticas del día
     stats = {
         "total_asistentes": Asistente.objects.count(),
         "asistentes_ingresados": Asistente.objects.filter(ha_ingresado=True).count(),
@@ -35,27 +42,102 @@ def dashboard_entrada(request):
         ).count(),
     }
 
-    # Últimos ingresos verificados por este usuario
     ultimos_ingresos = Asistente.objects.filter(
         usuario_entrada=request.user, ha_ingresado=True, fecha_ingreso__date=hoy
     ).order_by("-fecha_ingreso")[:5]
 
-    # Estadísticas por categoría
     stats_categorias = Categoria.objects.annotate(
         total_registrados=Count("asistente"),
         total_ingresados=Count("asistente", filter=Q(asistente__ha_ingresado=True)),
     ).filter(activa=True)
 
+    categorias = Categoria.objects.filter(activa=True)  # <-- añadir
+
     context = {
         "stats": stats,
         "ultimos_ingresos": ultimos_ingresos,
         "stats_categorias": stats_categorias,
+        "categorias": categorias,                      # <-- añadir
     }
-
     return render(request, "core/entrada/dashboard.html", context)
 
 
 # ===== GESTIÓN DE ASISTENTES =====
+# ===== GESTIÓN DE ASISTENTES =====
+@entrada_o_admin
+@require_http_methods(["POST"])
+def registrar_evento_dia(request):
+    """
+    Registro masivo para el día del evento:
+    - Divide el total pagado entre cantidad de asistentes -> precio_unitario
+    - Asigna a una categoría especial "Día"
+    - Crea asistentes genéricos marcados como ingresados
+    - CHAMBONADA: guarda el precio_unitario (valor de boleta) en consumos_disponibles (en pesos)
+    - Devuelve JSON para feedback inmediato en el front
+    """
+    try:
+        cantidad = int(request.POST.get("cantidad", "0"))
+        total_pagado = Decimal(request.POST.get("precio", "0"))
+
+        if cantidad <= 0 or total_pagado <= 0:
+            return JsonResponse({"success": False, "message": "Cantidad y precio deben ser mayores a 0."})
+
+        # Precio por persona (total / cantidad)
+        precio_unitario = total_pagado / cantidad
+
+        # Buscar o crear categoría "Día"
+        cat, _ = Categoria.objects.get_or_create(
+            nombre="Día",
+            defaults={
+                "consumos_incluidos": 0,
+                "precio": precio_unitario,
+                "descripcion": "Categoría generada automáticamente para asistentes del día",
+                "activa": True,
+            }
+        )
+        # Mantener actualizado el precio de la categoría
+        if cat.precio != precio_unitario:
+            cat.precio = precio_unitario
+            cat.save(update_fields=["precio"])
+
+        ahora = timezone.now()
+        nuevos = []
+
+        # CHAMBONADA: saldo en pesos (redondeo al peso más cercano) para cada asistente
+        saldo_pesos = int(precio_unitario.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+        for i in range(1, cantidad + 1):
+            cc_auto = f"EV{uuid.uuid4().hex[:10].upper()}"
+            codigo_qr_text = uuid.uuid4().hex
+
+            nuevos.append(Asistente(
+                nombre=f"Asistente Día {i}",
+                cc=cc_auto,
+                numero="",
+                correo=f"dia{i}@dmt69.local",
+                categoria=cat,
+                codigo_qr=codigo_qr_text,
+                ha_ingresado=True,
+                fecha_ingreso=ahora,
+                usuario_entrada=request.user,
+                # >>> AQUÍ LA CHAMBONADA: ponemos el valor de la boleta como consumo disponible
+                consumos_disponibles=saldo_pesos,
+                creado_por=request.user,
+            ))
+
+        Asistente.objects.bulk_create(nuevos, batch_size=500)
+
+        return JsonResponse({
+            "success": True,
+            "message": (
+                f"Se registraron {cantidad} asistentes del día. "
+                f"Precio unitario {precio_unitario:.2f}; consumo disponible por asistente: ${saldo_pesos}."
+            )
+        })
+
+    except Exception as e:
+        return JsonResponse({"success": False, "message": f"Error: {str(e)}"})
+
 
 
 @entrada_o_admin
@@ -382,69 +464,63 @@ def buscar_asistente(request):
 # ===== EXPORTAR =====
 
 
-@entrada_o_admin
 def exportar_excel(request):
-    """Exportar lista de asistentes a Excel"""
+    """
+    Exportar lista de asistentes a Excel con las columnas específicas.
+    Consumos Disponibles muestra el valor pagado individualmente (precio unitario)
+    para los asistentes del día del evento (categoría "Día"). Al final se incluye
+    una fila con el valor neto total de todas las entradas.
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Asistentes DMT 69"
 
-    # Headers
+    # Cabeceras personalizadas
     headers = [
-        "Nombre",
-        "Cédula",
-        "Teléfono",
-        "Correo",
-        "Categoría",
-        "Precio Pagado",
-        "Consumos Disponibles",
-        "Ha Ingresado",
-        "Fecha Ingreso",
-        "Hora Ingreso",
-        "Verificado Por",
-        "Fecha Registro",
-        "Creado Por",
+        "Nombre", "Cédula", "Teléfono", "Correo",
+        "Categoría", "Consumos Disponibles",
+        "Estado", "Verificado Por", "Valor entrada",
     ]
     ws.append(headers)
 
-    # Datos
-    for asistente in Asistente.objects.all().order_by("categoria__nombre", "nombre"):
-        ws.append(
-            [
-                asistente.nombre,
-                asistente.cc,
-                asistente.numero,
-                asistente.correo,
-                asistente.categoria.nombre,
-                float(asistente.categoria.precio),
-                asistente.consumos_disponibles,
-                "SÍ" if asistente.ha_ingresado else "NO",
-                (
-                    asistente.fecha_ingreso.strftime("%d/%m/%Y")
-                    if asistente.fecha_ingreso
-                    else ""
-                ),
-                (
-                    asistente.fecha_ingreso.strftime("%H:%M")
-                    if asistente.fecha_ingreso
-                    else ""
-                ),
-                asistente.usuario_entrada.username if asistente.usuario_entrada else "",
-                asistente.fecha_registro.strftime("%d/%m/%Y %H:%M"),
-                asistente.creado_por.username if asistente.creado_por else "",
-            ]
-        )
+    total_neto = Decimal(0)
+    asistentes_queryset = Asistente.objects.all().select_related("categoria", "usuario_entrada").order_by("categoria__nombre", "nombre")
 
-    # Configurar respuesta
+    for asistente in asistentes_queryset:
+        # Precio de entrada para cada asistente
+        precio_entrada = asistente.categoria.precio
+        total_neto += precio_entrada
+
+        # “Consumos Disponibles”: mostrar precio individual si es categoría "Día"
+        if asistente.categoria.nombre == "Día":
+            consumo_disp = float(precio_entrada)  # precio unitario pagado
+        else:
+            consumo_disp = asistente.consumos_disponibles
+
+        estado = "INGRESADO" if asistente.ha_ingresado else "PENDIENTE"
+        verificado_por = asistente.usuario_entrada.username if asistente.usuario_entrada else ""
+
+        ws.append([
+            asistente.nombre,
+            asistente.cc,
+            asistente.numero,
+            asistente.correo,
+            asistente.categoria.nombre,
+            consumo_disp,
+            estado,
+            verificado_por,
+            float(precio_entrada),
+        ])
+
+    # Fila de valor neto total
+    ws.append(["", "", "", "", "", "", "", "VALOR NETO", float(total_neto)])
+
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    response["Content-Disposition"] = (
-        f'attachment; filename=asistentes_dmt69_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
-    )
+    response["Content-Disposition"] = f'attachment; filename=asistentes_dmt69_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
     wb.save(response)
     return response
-
 
 # ===== REPORTES =====
 

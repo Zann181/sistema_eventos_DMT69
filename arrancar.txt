@@ -10,6 +10,12 @@ python manage.py runserver_plus --cert-file certs/localhost+3.pem --key-file cer
 # Terminal 2
 ngrok http https://localhost:8000
 
+usuario Contraseña
+motas  12345678@
+entrada 
+barra 12345678@
+
+
 
 
 

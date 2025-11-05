@@ -15,6 +15,8 @@ from django.utils import timezone
 
 
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+# Importar Decimal para convertir el precio pagado a un número entero
+from decimal import Decimal, ROUND_HALF_UP
 
 # Importar modelos desde core
 from core.models import Producto, VentaBarra, MovimientoStock, Asistente, PerfilUsuario
@@ -66,9 +68,21 @@ def dashboard(request):
 
 
 def dashboard_entrada(request):
+    """
+    Renderiza el dashboard de entrada con estadísticas y lista de categorías.
+
+    Además de las estadísticas y la lista de categorías activas, esta vista
+    prepara un diccionario con el precio de cada categoría para que el
+    formulario de creación de asistentes pueda rellenar automáticamente el
+    campo de «precio pagado» al seleccionar una categoría en el frontend.
+
+    El diccionario `categoria_precios` se pasa en el contexto y se puede
+    serializar a JSON dentro de la plantilla para utilizarlo en el script
+    de autocompletado del precio.
+    """
     hoy = datetime.now().date()
 
-    # Estadísticas
+    # Estadísticas básicas
     stats = {
         "total_asistentes": Asistente.objects.count(),
         "asistentes_ingresados": Asistente.objects.filter(ha_ingresado=True).count(),
@@ -78,13 +92,64 @@ def dashboard_entrada(request):
         ).count(),
     }
 
-    # Categorías con stats
-    categorias = Categoria.objects.annotate(
-        total=Count("asistente"),
-        ingresados=Count("asistente", filter=Q(asistente__ha_ingresado=True)),
-    ).filter(activa=True)
+    # Categorías activas con anotaciones de conteos básicos.
+    # Luego se calcula manualmente el subtotal sumando el valor de consumo (consumos_disponibles)
+    # de cada asistente en la categoría. Esto asegura que el subtotal refleje la suma correcta
+    # sin depender de agregaciones condicionales que podrían fallar.
+    categorias_qs = (
+        Categoria.objects.filter(activa=True)
+        .annotate(
+            total=Count("asistente"),
+            ingresados=Count("asistente", filter=Q(asistente__ha_ingresado=True)),
+        )
+    )
 
-    context = {"stats": stats, "categorias": categorias}
+    categorias = []
+    for c in categorias_qs:
+        # Pendientes = total - ingresados
+        c.pendientes = (c.total or 0) - (c.ingresados or 0)
+        # Calcular subtotal sumando consumos_disponibles de todos los asistentes en la categoría
+        suma = (
+            Asistente.objects.filter(categoria=c)
+            .aggregate(suma=Sum("consumos_disponibles"))
+            .get("suma")
+            or 0
+        )
+        c.subtotal = suma
+        categorias.append(c)
+
+    # Preparar diccionario de precios por categoría. Usamos str(c.pk) como clave
+    # porque en la plantilla se tratará como cadena. Convertimos el precio a
+    # cadena simple con str() para que no pierda decimales y sea seguro de
+    # serializar. Si no hay precio definido, se asigna "0" por defecto.
+    categoria_precios = {str(c.pk): str(c.precio) if c.precio is not None else "0" for c in categorias}
+
+    # Serializar a JSON para que pueda ser insertado directamente en el
+    # Javascript de la plantilla. Utilizamos el parámetro ensure_ascii=False
+    # para permitir números con comas en locales que lo requieran y evitar
+    # escapes innecesarios. En caso de error al serializar, se usará una
+    # cadena vacía para evitar romper la vista.
+    try:
+        import json as _json  # local import para no contaminar espacio de nombres
+        categoria_precios_json = _json.dumps(categoria_precios, ensure_ascii=False)
+    except Exception:
+        categoria_precios_json = '{}'
+
+    # Total recaudado (suma de consumos disponibles de todos los asistentes)
+    total_recaudado_data = Asistente.objects.aggregate(total=Sum("consumos_disponibles"))
+    total_recaudado = total_recaudado_data.get("total") or 0
+
+    # Número total de registros de asistentes
+    registros = Asistente.objects.count()
+
+    context = {
+        "stats": stats,
+        "categorias": categorias,
+        "categoria_precios": categoria_precios,
+        "categoria_precios_json": categoria_precios_json,
+        "total_recaudado": total_recaudado,
+        "registros": registros,
+    }
     return render(request, "core/dashboard_entrada.html", context)
 
 
@@ -153,55 +218,87 @@ def lista_asistentes(request):
 def crear_asistente(request):
     if request.method == "POST":
         try:
+            # Obtener el valor pagado enviado desde el formulario.  El campo se llama
+            # "consumos_disponibles" en el formulario porque reutilizamos ese
+            # atributo del modelo para almacenar el precio pagado.
+            precio_str = request.POST.get("consumos_disponibles", "").strip()
+            # Convertir a Decimal y luego a entero (pesos) redondeando al peso más cercano.
+            # Si no se envía un valor o es inválido, se asignará 0 inicialmente y luego
+            # se tomará el precio de la categoría como valor por defecto.
+            consumo_disponible = 0
+            if precio_str:
+                try:
+                    precio_decimal = Decimal(precio_str)
+                    consumo_disponible = int(
+                        precio_decimal.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+                    )
+                except Exception:
+                    consumo_disponible = 0
+
+            # Si no se proporcionó un precio válido, usar el precio de la categoría seleccionada
+            if consumo_disponible == 0:
+                categoria_id = request.POST.get("categoria")
+                if categoria_id:
+                    try:
+                        categoria = Categoria.objects.get(pk=categoria_id)
+                        # Convertir el precio de la categoría a entero redondeando al peso
+                        precio_categoria = Decimal(categoria.precio or 0)
+                        consumo_disponible = int(
+                            precio_categoria.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+                        )
+                    except Exception:
+                        # Si ocurre cualquier error (por ejemplo, categoría inexistente), dejar en 0
+                        consumo_disponible = 0
+            
             with transaction.atomic():
                 cc = request.POST.get("cc", "").strip()
                 if Asistente.objects.filter(cc=cc).exists():
                     messages.error(request, f"Ya existe asistente con cédula {cc}")
                 else:
-                    # Crear asistente
+                    # Crear asistente, asignando consumos_disponibles al valor pagado
                     asistente = Asistente.objects.create(
                         nombre=request.POST["nombre"].strip(),
                         cc=cc,
                         numero=request.POST["numero"].strip(),
                         correo=request.POST["correo"].strip(),
                         categoria_id=request.POST["categoria"],
+                        consumos_disponibles=consumo_disponible,
                         creado_por=request.user,
                     )
                     
-                    # Generar QR
+                    # Generar QR si es necesario
                     if not asistente.qr_image:
                         asistente.generar_qr()
                     
-                    # Enviar email
-                    primer_nombre = asistente.nombre.split()[0]
+                    # Enviar email de bienvenida al asistente
                     email_enviado = False
-                    
                     try:
                         from .email_utils import enviar_email_bienvenida
                         email_enviado = enviar_email_bienvenida(asistente)
                     except Exception as e:
+                        # Imprimir el error en consola pero no interrumpir el flujo
                         print(f"Error enviando email: {e}")
                     
-                    # Mostrar mensaje según resultado
+                    # Mostrar mensaje según resultado del envío de correo
                     if email_enviado:
                         messages.success(
-                            request, 
+                            request,
                             f"✅ Asistente {asistente.nombre} creado exitosamente. "
                             f"Email de confirmación enviado a {asistente.correo}"
                         )
                     else:
                         messages.warning(
-                            request, 
+                            request,
                             f"⚠️ Asistente {asistente.nombre} creado, pero no se pudo enviar el email. "
                             f"Verifica la configuración de correo en settings.py"
                         )
                     
                     return redirect("core:ver_qr", cc=asistente.cc)
-                    
         except Exception as e:
+            # Capturar cualquier excepción y mostrar mensaje de error
             messages.error(request, f"Error al crear asistente: {e}")
 
-    # Redirigir de vuelta al dashboard
+    # Redirigir de vuelta al dashboard cuando no se envía un POST o se produce un error
     return redirect("core:dashboard")
 
 # ===== EDITAR ASISTENTE =====
@@ -808,43 +905,20 @@ def dashboard_barra(request):
     
     return render(request, 'core/dashboard_barra.html', context)
 
+import re
 
-def extraer_stock_inicial_de_descripcion(descripcion):
+
+def extraer_stock_inicial_de_descripcion(descripcion: str):
     """
-    Extrae el stock inicial del día desde la descripción del producto
-    Formato esperado: "Stock inicial día: 50" o similar
+    Devuelve el total de la descripción sumando todos los números que encuentre.
+    Ej.: "300+50+120" -> 470. Si no hay números, retorna None.
     """
     if not descripcion:
         return None
-    
-    try:
-        # Buscar patrones como "Stock inicial día: 50", "Inicial: 50", etc.
-        import re
-        
-        # Patrón flexible para encontrar números después de palabras clave
-        patrones = [
-            r'stock\s+inicial\s+d[ií]a?\s*:?\s*(\d+)',
-            r'inicial\s*:?\s*(\d+)',
-            r'stock\s+d[ií]a\s*:?\s*(\d+)',
-            r'cantidad\s+inicial\s*:?\s*(\d+)',
-            r'd[ií]a\s*:?\s*(\d+)',
-        ]
-        
-        for patron in patrones:
-            match = re.search(patron, descripcion.lower())
-            if match:
-                return int(match.group(1))
-        
-        # Si no encuentra patrones específicos, buscar cualquier número al final
-        numeros = re.findall(r'\d+', descripcion)
-        if numeros:
-            return int(numeros[-1])  # Tomar el último número encontrado
-            
-    except (ValueError, AttributeError, IndexError):
-        pass
-    
-    return None
-
+    numeros = re.findall(r"\d+", str(descripcion))
+    if not numeros:
+        return None
+    return sum(int(n) for n in numeros)
 
 
 
@@ -1054,96 +1128,70 @@ def debug_ventas_calculadas(request):
 
 # REEMPLAZA LA FUNCIÓN vender_producto EN core/views.py
 
+from django.db import transaction
+
 @require_http_methods(["POST"])
-@csrf_exempt
-@ajax_login_required
+@login_required
 def vender_producto(request):
-    """Procesar venta de un producto - CORREGIDO CON COMPENSACIÓN +1"""
+    """Procesa la venta de 1 unidad, descuenta stock una sola vez y registra la venta."""
+    # Leer JSON
     try:
-        perfil = request.user.perfilusuario
-        if perfil.rol not in ['barra', 'admin']:
-            return JsonResponse({'success': False, 'message': 'Sin permisos de barra'})
-    except PerfilUsuario.DoesNotExist:
-        return JsonResponse({'success': False, 'message': 'Usuario sin perfil'})
-    
+        data = json.loads(request.body or b"{}")
+        producto_id = int(data.get('producto_id', 0))
+        cantidad = int(data.get('cantidad', 1) or 1)
+    except Exception:
+        return JsonResponse({'success': False, 'message': 'Payload inválido'}, status=400)
+
+    if producto_id <= 0 or cantidad <= 0:
+        return JsonResponse({'success': False, 'message': 'Producto o cantidad inválidos'}, status=400)
+
     try:
-        data = json.loads(request.body)
-        producto_id = data.get('producto_id')
-        cantidad = 1  # SIEMPRE 1 para evitar problemas
-        
-        if not producto_id:
-            return JsonResponse({'success': False, 'message': 'ID de producto requerido'})
-        
-        # Obtener producto con bloqueo
-        try:
-            with transaction.atomic():
-                producto = Producto.objects.select_for_update().get(id=producto_id, activo=True)
-                
-                # Verificar stock ANTES de la venta
-                if producto.stock < cantidad:
-                    return JsonResponse({
-                        'success': False, 
-                        'message': f'Stock insuficiente. Disponible: {producto.stock}'
-                    })
-                
-                # Guardar stock original para referencia
-                stock_original = producto.stock
-                
-                # Crear la venta (esto va a descontar automáticamente el stock)
-                venta = VentaBarra.objects.create(
-                    asistente=None,
-                    producto=producto,
-                    cantidad=cantidad,
-                    precio_unitario=producto.precio,
-                    usa_consumo_incluido=False,
-                    vendedor=request.user
-                )
-                
-                # COMPENSACIÓN: Agregar +1 al stock para anular el doble descuento
-                producto.refresh_from_db()  # Obtener el stock actualizado
-                producto.stock += 1  # Compensar el doble descuento
-                producto.save(update_fields=['stock'])
-                
-                # Verificar que el stock final sea correcto (original - 1)
-                producto.refresh_from_db()
-                stock_esperado = stock_original - cantidad
-                
-                if producto.stock != stock_esperado:
-                    # Si aún no está correcto, forzar el stock correcto
-                    producto.stock = stock_esperado
-                    producto.save(update_fields=['stock'])
-                
-                # Determinar color del nuevo stock
-                if producto.stock == 0:
-                    nuevo_color_stock = 'danger'
-                elif producto.stock <= producto.stock_minimo:
-                    nuevo_color_stock = 'warning'
-                else:
-                    nuevo_color_stock = 'success'
-                
-                return JsonResponse({
-                    'success': True,
-                    'message': f'Venta de {producto.nombre} exitosa',
-                    'venta': {
-                        'id': venta.id,
-                        'producto_nombre': producto.nombre,
-                        'cantidad': cantidad,
-                        'total': float(venta.total),
-                        'nuevo_stock': producto.stock,
-                        'color_stock': nuevo_color_stock,
-                        'puede_vender': producto.stock > 0,
-                        'cliente': 'Cliente General',
-                        'hora': venta.fecha.strftime('%H:%M:%S')
-                    }
-                })
-                
-        except Producto.DoesNotExist:
-            return JsonResponse({'success': False, 'message': 'Producto no encontrado'})
-        
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'message': 'Formato JSON inválido'})
+        with transaction.atomic():
+            producto = Producto.objects.select_for_update().get(id=producto_id, activo=True)
+            if producto.stock < cantidad:
+                return JsonResponse({'success': False, 'message': f'Stock insuficiente. Disponible: {producto.stock}'})
+
+            # Descontar exactamente una vez
+            producto.stock -= cantidad
+            producto.save(update_fields=['stock'])
+
+            venta = VentaBarra.objects.create(
+                asistente=None,               # ajusta si corresponde
+                producto=producto,
+                cantidad=cantidad,
+                precio_unitario=producto.precio,
+                total=producto.precio * cantidad,
+                vendedor=request.user,
+            )
+
+        # Color del stock para UI
+        if producto.stock == 0:
+            color = 'danger'
+        elif producto.stock <= getattr(producto, 'stock_minimo', 0):
+            color = 'warning'
+        else:
+            color = 'success'
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Venta de {producto.nombre} x{cantidad} exitosa',
+            'venta': {
+                'id': venta.id,
+                'producto_nombre': producto.nombre,
+                'cantidad': cantidad,
+                'total': float(venta.total),
+                'nuevo_stock': producto.stock,
+                'color_stock': color,
+                'puede_vender': producto.stock > 0,
+                'hora': getattr(venta, 'fecha', None).strftime('%H:%M:%S') if getattr(venta, 'fecha', None) else '',
+            },
+        })
+
+    except Producto.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Producto no encontrado'}, status=404)
     except Exception as e:
-        return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+        return JsonResponse({'success': False, 'message': f'Error: {e}'}, status=500)
+
 
 # OPCIONAL: Función de DEBUG para verificar stock después de ventas
 @login_required
@@ -1320,8 +1368,121 @@ def exportar_reporte_barra(request):
 
 
 
+def _check_rol_barra_o_admin(user):
+    try:
+        return user.perfilusuario.rol in ['barra', 'admin']
+    except:
+        return False
+
+@require_http_methods(["POST"])
+@login_required
+def crear_producto_rapido(request):
+    """Crear producto sencillo desde la pestaña (solo nombre, precio, stock, stock_minimo, descripcion)."""
+    if not _check_rol_barra_o_admin(request.user):
+        return JsonResponse({'success': False, 'message': 'Sin permisos'}, status=403)
+
+    try:
+        nombre = request.POST.get('nombre', '').strip()
+        precio = float(request.POST.get('precio', 0))
+        stock = int(request.POST.get('stock', 0))
+        stock_minimo = int(request.POST.get('stock_minimo', 5))
+        descripcion = request.POST.get('descripcion', '').strip()
+
+        if not nombre or precio < 0 or stock < 0 or stock_minimo < 0:
+            raise ValueError("Datos inválidos")
+
+        with transaction.atomic():
+            p = Producto.objects.create(
+                nombre=nombre,
+                precio=precio,
+                stock=stock,
+                stock_minimo=stock_minimo,
+                descripcion=descripcion,
+                creado_por=request.user,
+                activo=True,
+            )
+        # vuelve al dashboard de barra
+        from django.contrib import messages
+        messages.success(request, f"Producto {p.nombre} creado correctamente")
+        return redirect('core:dashboard_barra')
+    except Exception as e:
+        from django.contrib import messages
+        messages.error(request, f"Error: {e}")
+        return redirect('core:dashboard_barra')
 
 
 
+from django.views.decorators.http import require_http_methods
+from django.contrib import messages
+@require_http_methods(["POST"])
+@login_required
+def sumar_descripcion_producto(request):
+    """
+    Agrega "+cantidad" a la descripción y suma esa cantidad al stock real del producto.
+    Acepta tanto JSON (AJAX) como Form-POST (desde el modal).
+    """
+    def wants_json(req):
+        ct = (req.content_type or "")
+        return req.headers.get("x-requested-with") == "XMLHttpRequest" or ct.startswith("application/json")
 
+    def respond(ok, status=200, **payload):
+        if wants_json(request):
+            return JsonResponse({"success": ok, **payload}, status=status)
+        # POST normal: redirigir con mensajes flash
+        if ok:
+            messages.success(request, f"Descripción actualizada a '{payload.get('nueva_descripcion','')}'. Stock: {payload.get('nuevo_stock','?')}")
+        else:
+            messages.error(request, payload.get('message', 'Error al actualizar'))
+        return redirect('core:dashboard_barra')
 
+    try:
+        # Extraer datos (JSON o Form)
+        if (request.content_type or "").startswith("application/json"):
+            data = json.loads((request.body or b"{}").decode("utf-8"))
+            producto_id = int(data.get("producto_id", 0))
+            cantidad = int(data.get("cantidad", 0))
+        else:
+            producto_id = int(request.POST.get("producto_id", 0))
+            cantidad = int(request.POST.get("cantidad", 0))
+
+        if producto_id <= 0 or cantidad <= 0:
+            return respond(False, status=400, message="Producto o cantidad inválidos")
+
+        with transaction.atomic():
+            # Lock del producto
+            p = Producto.objects.select_for_update().get(pk=producto_id, activo=True)
+
+            # Construir la nueva descripción
+            desc_actual = (p.descripcion or "").strip()
+            nueva_desc = str(cantidad) if not desc_actual else f"{desc_actual}+{cantidad}"
+
+            # Incrementar STOCK real
+            p.descripcion = nueva_desc
+            p.stock = (p.stock or 0) + cantidad
+
+            # Guardar cambios
+            try:
+                p.save(update_fields=["descripcion", "stock"])  # añade aquí otros campos si tu modelo los usa (p.ej. fecha_actualizacion)
+            except Exception:
+                p.save()
+
+        # Color para la tarjeta
+        if p.stock == 0:
+            color = "danger"
+        elif p.stock <= getattr(p, "stock_minimo", 0):
+            color = "warning"
+        else:
+            color = "success"
+
+        return respond(True,
+                       nueva_descripcion=nueva_desc,
+                       nuevo_stock=p.stock,
+                       color_stock=color,
+                       puede_vender=p.stock > 0)
+
+    except Producto.DoesNotExist:
+        return respond(False, status=404, message="Producto no encontrado")
+    except json.JSONDecodeError:
+        return respond(False, status=400, message="JSON inválido")
+    except Exception as e:
+        return respond(False, status=400, message=f"Error: {e}")
