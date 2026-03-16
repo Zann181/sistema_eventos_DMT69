@@ -1,0 +1,109 @@
+{% extends "shared_ui/base.html" %}
+{% load safe_lookup %}
+
+{% block title %}Ventas de barra{% endblock %}
+{% block page_title %}Ventas de barra{% endblock %}
+
+{% block content %}
+{% with branch_name=branch|dig:"name"|default:"Sucursal" event_name=event|dig:"name"|default:"Evento sin seleccionar" %}
+<section class="panel-card sales-toolbar">
+    <div class="panel-header">
+        <div>
+            <span class="eyebrow">Barra</span>
+            <h4>{{ branch_name }} / {{ event_name }}</h4>
+            <p class="text-muted mb-0">Consulta las ventas registradas del evento y elimina lineas cuando sea necesario.</p>
+        </div>
+        <div class="sales-toolbar-actions">
+            <a href="{% url 'sales:pos' %}" class="btn btn-dark">
+                <i class="fas fa-cash-register"></i> Punto de venta
+            </a>
+        </div>
+    </div>
+</section>
+
+<section class="panel-grid">
+    <article class="panel-card">
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">Resumen</span>
+                <h4>Ventas de barra</h4>
+            </div>
+        </div>
+        <div class="metric-grid">
+            {% include "shared_ui/components/metric_card.html" with label="Total vendido" value=stats.sales_total helper="Ingresos del evento" number_format="currency" %}
+            {% include "shared_ui/components/metric_card.html" with label="Ventas" value=stats.sales_count helper="Facturas registradas" %}
+            {% include "shared_ui/components/metric_card.html" with label="Unidades" value=stats.units_sold helper="Productos vendidos" %}
+            {% include "shared_ui/components/metric_card.html" with label="Saldo caja" value=stats.cash_balance helper="Ventas - gastos - vaciados" number_format="currency" %}
+        </div>
+    </article>
+
+    <article class="panel-card">
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">Detalle</span>
+                <h4>Tabla de ventas</h4>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Hora</th>
+                        <th>Pedido</th>
+                        <th>Unidades</th>
+                        <th>Total</th>
+                        <th>Pago</th>
+                        <th>Usuario</th>
+                        <th class="text-end">Accion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sale in sales_page %}
+                    <tr>
+                        <td>{{ sale.created_at|date:"d/m H:i" }}</td>
+                        <td>{{ sale.products_label }}</td>
+                        <td data-number="{{ sale.quantity }}">{{ sale.quantity }}</td>
+                        <td data-number="{{ sale.total }}" data-format="currency">$ {{ sale.total }}</td>
+                        <td>
+                            {% for payment_label, payment_amount in sale.payments_display %}
+                            <div>{{ payment_label }}: <span data-number="{{ payment_amount }}" data-format="currency">$ {{ payment_amount }}</span></div>
+                            {% empty %}
+                            <span class="text-muted">Sin pagos</span>
+                            {% endfor %}
+                        </td>
+                        <td>{{ sale.sold_by.username }}</td>
+                        <td class="text-end">
+                            <form method="post" action="{% url 'sales:delete' sale.id %}" onsubmit="return confirm('Eliminar esta venta completa?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-dark btn-sm">
+                                    <i class="fas fa-trash"></i> Eliminar
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7">Aun no hay ventas registradas para este evento.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if sales_page.paginator.num_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <span class="text-muted">Pagina {{ sales_page.number }} de {{ sales_page.paginator.num_pages }}</span>
+            <div class="d-flex gap-2">
+                {% if sales_page.has_previous %}
+                <a class="btn btn-outline-dark btn-sm" href="?page={{ sales_page.previous_page_number }}">Anterior</a>
+                {% endif %}
+                {% if sales_page.has_next %}
+                <a class="btn btn-outline-dark btn-sm" href="?page={{ sales_page.next_page_number }}">Siguiente</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </article>
+</section>
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,434 @@
+{% extends "shared_ui/base.html" %}
+{% load static safe_lookup %}
+
+{% block title %}Barra{% endblock %}
+{% block page_title %}Operacion de barra{% endblock %}
+
+{% block content %}
+{% with branch_name=branch|dig:"name"|default:"Sucursal" event_name=event|dig:"name"|default:"Evento sin seleccionar" %}
+<section class="panel-card sales-toolbar" data-sales-shell data-initial-action="{{ initial_action|default:'' }}">
+    <div class="panel-header">
+        <div>
+            <span class="eyebrow">Barra</span>
+            <h4>{{ branch_name }} / {{ event_name }}</h4>
+            <p class="text-muted mb-0">Caja visual para operar rapido, con carrito vivo y cobro en una sola pantalla.</p>
+        </div>
+        <div class="sales-toolbar-actions">
+            <a href="{% url 'sales:list' %}" class="btn btn-dark">
+                <i class="fas fa-table-list"></i> Ver ventas
+            </a>
+            {% if can_manage_branch_configuration %}
+            <a href="{% url 'sales:pos' %}?action=productos" class="btn btn-outline-dark">
+                <i class="fas fa-plus"></i> Agregar producto
+            </a>
+            {% endif %}
+            {% if can_manage_events_configuration %}
+            <a href="{% url 'sales:pos' %}?action=evento-productos" class="btn btn-outline-dark">
+                <i class="fas fa-sliders"></i> Configurar evento
+            </a>
+            {% endif %}
+            <a href="{% url 'sales:pos' %}?action=gastos" class="btn btn-outline-dark">
+                <i class="fas fa-receipt"></i> Gasto
+            </a>
+            <a href="{% url 'sales:pos' %}?action=vaciar-caja" class="btn btn-outline-dark">
+                <i class="fas fa-vault"></i> Vaciar caja
+            </a>
+        </div>
+    </div>
+</section>
+
+<form id="sale-form" class="sales-pos-grid" data-endpoint="{% url 'sales:create' %}">
+    {% csrf_token %}
+    <article class="panel-card sales-catalog-card">
+        <div class="panel-header sales-catalog-header">
+            <div>
+                <span class="eyebrow">Caja</span>
+                <h4>Productos del evento</h4>
+            </div>
+        </div>
+        <p class="sales-catalog-hint">Selecciona un producto. La cantidad se ajusta en la factura.</p>
+
+        <div class="d-none">
+            {{ form.quantity }}
+            <input type="hidden" name="sale_cart" data-sale-cart-input>
+            <label for="id_event_product">Producto</label>
+            <select name="event_product" id="id_event_product" class="form-select" data-sale-product-select>
+                <option value="">Selecciona un producto</option>
+                {% for item in sale_products %}
+                <option
+                    value="{{ item.pk }}"
+                    data-price="{{ item.effective_price }}"
+                    data-name="{{ item.product.name }}"
+                    data-image="{% if item.product.image %}{{ item.product.image.url }}{% endif %}"
+                    {% if form.event_product.value|stringformat:"s" == item.pk|stringformat:"s" %}selected{% endif %}
+                >
+                    {{ item.product.name }} - $ {{ item.effective_price|floatformat:0 }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {{ form.event_product.errors }}
+        {{ form.quantity.errors }}
+
+        <div class="sales-product-grid">
+            {% for item in sale_products %}
+            <article
+                class="sales-product-card{% if form.event_product.value|stringformat:'s' == item.pk|stringformat:'s' %} is-selected{% endif %}"
+                data-product-card
+                data-product-id="{{ item.pk }}"
+                data-product-name="{{ item.product.name }}"
+                data-product-price="{{ item.effective_price }}"
+                data-product-image="{% if item.product.image %}{{ item.product.image.url }}{% endif %}"
+                role="button"
+                tabindex="0"
+                aria-label="Seleccionar {{ item.product.name }}"
+            >
+                <div class="sales-product-media">
+                    {% if item.product.image %}
+                    <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}">
+                    {% else %}
+                    <div class="sales-product-placeholder">
+                        <i class="fas fa-martini-glass-citrus"></i>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="sales-product-copy">
+                    <strong>{{ item.product.name }}</strong>
+                </div>
+                <div class="sales-product-footer">
+                    <span class="sales-product-price" data-number="{{ item.effective_price }}" data-format="currency">$ {{ item.effective_price }}</span>
+                </div>
+            </article>
+            {% empty %}
+            <div class="sales-empty-state">
+                <i class="fas fa-box-open"></i>
+                <p>No hay productos habilitados para este evento.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+
+    <aside class="panel-card sales-invoice-card">
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">Factura</span>
+                <h4>Venta actual</h4>
+            </div>
+        </div>
+
+        <div class="sales-invoice-product">
+            <div class="sales-order-list" data-sale-lines></div>
+
+            <div class="sales-invoice-summary">
+                <div class="sales-summary-row sales-summary-row-total">
+                    <span>Total a cobrar</span>
+                    <strong data-sale-total-clone>$ 0</strong>
+                </div>
+            </div>
+        </div>
+
+        <div data-sale-payment-shell>
+            <div class="sales-quick-payments">
+                <span class="eyebrow">Pago rapido</span>
+                <div class="sales-quick-payment-buttons">
+                    <button type="button" class="btn btn-outline-dark btn-sm" data-quick-payment-amount="1000">1.000</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" data-quick-payment-amount="5000">5.000</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" data-quick-payment-amount="10000">10.000</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" data-quick-payment-amount="20000">20.000</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" data-quick-payment-amount="50000">50.000</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" data-quick-payment-amount="100000">100.000</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" data-quick-payment-total>Total</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" data-quick-payment-clear>Limpiar</button>
+                </div>
+            </div>
+            {% include "shared_ui/components/payment_split_rows.html" with prefix="sale" show_change_field=True %}
+        </div>
+
+        <button type="submit" class="btn btn-dark w-100 sales-submit-btn">
+            <i class="fas fa-cash-register"></i> Registrar venta
+        </button>
+        <div id="sale-result" class="mt-3"></div>
+    </aside>
+</form>
+
+{% if can_manage_branch_configuration %}
+<div class="modal fade" id="salesProductModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content neon-modal">
+            <div class="modal-header">
+                <div class="quick-category-header mb-0">
+                    <span class="eyebrow">Barra</span>
+                    <h5 class="modal-title mb-0">Agregar producto global</h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'sales:product_create' %}" class="stack-form" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">{{ product_form.name.label }}</label>
+                            {{ product_form.name }}
+                            {{ product_form.name.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">{{ product_form.price.label }}</label>
+                            {{ product_form.price }}
+                            {{ product_form.price.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">{{ product_form.image.label }}</label>
+                            {{ product_form.image }}
+                            {{ product_form.image.errors }}
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                {{ product_form.is_active }}
+                                <label class="form-check-label" for="{{ product_form.is_active.id_for_label }}">
+                                    Producto activo
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-outline-dark w-100">
+                        <i class="fas fa-save"></i> Guardar producto
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if can_manage_events_configuration %}
+<div class="modal fade" id="salesEventProductsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content neon-modal">
+            <div class="modal-header">
+                <div class="quick-category-header mb-0">
+                    <span class="eyebrow">Evento</span>
+                    <h5 class="modal-title mb-0">Habilitar productos y definir precio</h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'sales:event_products_update' %}" class="stack-form">
+                    {% csrf_token %}
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Habilitado</th>
+                                    <th>Producto</th>
+                                    <th>Precio base</th>
+                                    <th>Precio del evento</th>
+                                    {% if can_manage_branch_configuration %}
+                                    <th class="text-end">Acciones</th>
+                                    {% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in event_product_rows %}
+                                <tr>
+                                    <td>
+                                        <input type="hidden" name="event_product_ids" value="{{ row.product.id }}">
+                                        <div class="form-check">
+                                            <input
+                                                type="checkbox"
+                                                class="form-check-input"
+                                                id="event-product-enabled-{{ row.product.id }}"
+                                                name="event_product_enabled_{{ row.product.id }}"
+                                                {% if row.is_enabled %}checked{% endif %}
+                                            >
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <label for="event-product-enabled-{{ row.product.id }}" class="mb-0">
+                                            <strong>{{ row.product.name }}</strong>
+                                        </label>
+                                    </td>
+                                    <td data-number="{{ row.product.price }}" data-format="currency">$ {{ row.product.price }}</td>
+                                    <td>
+                                        <input
+                                            type="text"
+                                            name="event_product_price_{{ row.product.id }}"
+                                            value="{{ row.event_price_input }}"
+                                            class="form-control"
+                                            inputmode="decimal"
+                                            data-thousands="true"
+                                            data-decimals="0"
+                                            placeholder="Usar precio base"
+                                        >
+                                    </td>
+                                    {% if can_manage_branch_configuration %}
+                                    <td class="text-end">
+                                        <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                            <button
+                                                type="button"
+                                                class="btn btn-outline-dark btn-sm"
+                                                data-edit-product-button
+                                                data-product-update-url="{% url 'sales:product_update' row.product.id %}"
+                                                data-product-name="{{ row.product.name }}"
+                                                data-product-price="{{ row.product.price|floatformat:0 }}"
+                                                data-product-active="{% if row.product.is_active %}true{% else %}false{% endif %}"
+                                                data-product-image="{% if row.product.image %}{{ row.product.image.url }}{% endif %}"
+                                            >
+                                                <i class="fas fa-image"></i> Editar
+                                            </button>
+                                            <form method="post" action="{% url 'sales:product_delete' row.product.id %}" onsubmit="return confirm('Eliminar este producto de barra? Si ya tiene ventas, se retirara sin borrar el historial.');">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                    <i class="fas fa-trash"></i> Eliminar
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="{% if can_manage_branch_configuration %}5{% else %}4{% endif %}">No hay productos disponibles para configurar.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="submit" class="btn btn-outline-dark w-100">
+                        <i class="fas fa-sliders"></i> Guardar configuracion
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if can_manage_branch_configuration %}
+<div class="modal fade" id="salesProductEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content neon-modal">
+            <div class="modal-header">
+                <div class="quick-category-header mb-0">
+                    <span class="eyebrow">Barra</span>
+                    <h5 class="modal-title mb-0">Editar producto</h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="" class="stack-form" enctype="multipart/form-data" data-product-edit-form>
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="sales-product-edit-preview d-none" data-product-edit-preview-shell>
+                                <img src="" alt="Vista previa del producto" class="img-fluid rounded-4" data-product-edit-preview>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="sales-product-edit-name">{{ product_form.name.label }}</label>
+                                    <input type="text" name="name" id="sales-product-edit-name" class="form-control">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="sales-product-edit-price">{{ product_form.price.label }}</label>
+                                    <input
+                                        type="text"
+                                        name="price"
+                                        id="sales-product-edit-price"
+                                        class="form-control"
+                                        inputmode="decimal"
+                                        data-thousands="true"
+                                        data-decimals="0"
+                                    >
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="sales-product-edit-image">{{ product_form.image.label }}</label>
+                                    <input type="file" name="image" id="sales-product-edit-image" class="form-control" accept="image/*">
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="is_active" id="sales-product-edit-active" class="form-check-input">
+                                        <label class="form-check-label" for="sales-product-edit-active">Producto activo</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-outline-dark w-100">
+                        <i class="fas fa-save"></i> Guardar cambios
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="salesExpenseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content neon-modal">
+            <div class="modal-header">
+                <div class="quick-category-header mb-0">
+                    <span class="eyebrow">Caja</span>
+                    <h5 class="modal-title mb-0">Registrar gasto</h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'sales:expense_create' %}" class="stack-form" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">{{ expense_form.amount.label }}</label>
+                        {{ expense_form.amount }}
+                        {{ expense_form.amount.errors }}
+                    </div>
+                    {% include "shared_ui/components/payment_split_rows.html" with prefix="expense" %}
+                    <div class="mb-3">
+                        <label class="form-label">{{ expense_form.description.label }}</label>
+                        {{ expense_form.description }}
+                        {{ expense_form.description.errors }}
+                    </div>
+                    <button type="submit" class="btn btn-outline-dark w-100">
+                        <i class="fas fa-receipt"></i> Guardar gasto
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="salesCashDropModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content neon-modal">
+            <div class="modal-header">
+                <div class="quick-category-header mb-0">
+                    <span class="eyebrow">Caja</span>
+                    <h5 class="modal-title mb-0">Vaciar caja</h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'sales:cash_drop_create' %}" class="stack-form">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">{{ cash_drop_form.amount.label }}</label>
+                        {{ cash_drop_form.amount }}
+                        {{ cash_drop_form.amount.errors }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ cash_drop_form.description.label }}</label>
+                        {{ cash_drop_form.description }}
+                        {{ cash_drop_form.description.errors }}
+                    </div>
+                    <button type="submit" class="btn btn-outline-dark w-100">
+                        <i class="fas fa-vault"></i> Guardar movimiento
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endwith %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/sales/pos.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,668 @@
+{% extends "shared_ui/base.html" %}
+{% load safe_lookup %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block extra_head %}
+<style>
+  .dashboard-shell {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .dashboard-analytics {
+    --dashboard-neo: #39ff14;
+    --dashboard-neo-soft: #59f4ad;
+    --dashboard-ink: #f2fff6;
+    --dashboard-muted: rgba(150, 255, 178, 0.74);
+    --dashboard-border: rgba(89, 244, 173, 0.18);
+    --dashboard-surface: radial-gradient(circle at top, rgba(17, 38, 29, 0.92), rgba(5, 9, 8, 0.98));
+    position: relative;
+  }
+
+  .dashboard-analytics .metric-card,
+  .dashboard-analytics .panel-card {
+    background: var(--dashboard-surface);
+    border-color: var(--dashboard-border);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.03),
+      0 18px 40px rgba(0, 0, 0, 0.34);
+  }
+
+  .dashboard-analytics .metric-label,
+  .dashboard-analytics .eyebrow,
+  .dashboard-analytics .dashboard-subtle {
+    color: var(--dashboard-muted);
+    letter-spacing: 0.14em;
+  }
+
+  .dashboard-analytics h4,
+  .dashboard-analytics h5,
+  .dashboard-analytics .metric-value,
+  .dashboard-analytics .panel-header h4 {
+    color: var(--dashboard-ink);
+  }
+
+  .dashboard-analytics .metric-helper,
+  .dashboard-analytics p,
+  .dashboard-analytics td,
+  .dashboard-analytics th,
+  .dashboard-analytics small,
+  .dashboard-analytics span {
+    color: rgba(224, 255, 232, 0.8);
+  }
+
+  .dashboard-analytics .metric-value {
+    color: var(--dashboard-neo);
+    text-shadow: 0 0 18px rgba(57, 255, 20, 0.14);
+  }
+
+  .dashboard-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .dashboard-hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-summary-grid,
+  .dashboard-module-grid,
+  .dashboard-module-charts,
+  .dashboard-support-grid {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .dashboard-summary-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .dashboard-module-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-module-card {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .dashboard-module-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .dashboard-module-charts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-support-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    align-items: start;
+  }
+
+  .dashboard-pie-panel {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+  }
+
+  .dashboard-pie-visual {
+    align-items: start;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+  }
+
+  .dashboard-pie-chart {
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    margin: 0 auto;
+    max-width: 220px;
+    position: relative;
+    width: 100%;
+  }
+
+  .dashboard-pie-chart svg {
+    display: block;
+    filter:
+      drop-shadow(0 20px 30px rgba(0, 0, 0, 0.26))
+      drop-shadow(0 0 18px rgba(57, 255, 20, 0.06));
+    height: 100%;
+    width: 100%;
+  }
+
+  .dashboard-pie-base {
+    fill: rgba(255, 255, 255, 0.04);
+    stroke: rgba(89, 244, 173, 0.22);
+    stroke-width: 0.75;
+  }
+
+  .dashboard-pie-summary {
+    display: grid;
+    gap: 0.2rem;
+    margin-top: 0.9rem;
+    text-align: center;
+  }
+
+  .dashboard-pie-summary strong {
+    color: var(--dashboard-neo);
+    font-size: 1.15rem;
+    line-height: 1.1;
+    text-shadow: 0 0 14px rgba(57, 255, 20, 0.12);
+  }
+
+  .dashboard-pie-summary span {
+    color: var(--dashboard-muted);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .dashboard-pie-summary small {
+    color: rgba(193, 255, 208, 0.68);
+    font-size: 0.8rem;
+  }
+
+  .dashboard-donut,
+  .dashboard-pie-slice {
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease, stroke 0.2s ease;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .dashboard-pie-slice:hover,
+  .dashboard-pie-slice.is-active {
+    opacity: 0.96;
+    stroke: rgba(193, 255, 208, 0.96);
+    stroke-width: 1.15;
+    transform: translate(var(--slice-offset-x, 0), var(--slice-offset-y, 0));
+  }
+
+  .dashboard-pie-legend {
+    display: grid;
+    gap: 0.45rem;
+    min-width: 0;
+    padding-top: 0.2rem;
+  }
+
+  .dashboard-pie-legend button {
+    align-items: start;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-radius: 12px;
+    color: inherit;
+    cursor: pointer;
+    display: grid;
+    gap: 0.15rem 0.65rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 0.35rem 0.2rem;
+    text-align: left;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .dashboard-pie-legend button:hover,
+  .dashboard-pie-legend button.is-active {
+    transform: translateY(-1px);
+    opacity: 1;
+  }
+
+  .dashboard-pie-legend button:not(.is-active) {
+    opacity: 0.9;
+  }
+
+  .dashboard-pie-legend button.is-active strong,
+  .dashboard-pie-legend button:hover strong {
+    color: var(--dashboard-neo);
+  }
+
+  .dashboard-pie-dot {
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.18);
+    display: inline-block;
+    height: 0.8rem;
+    margin-top: 0.2rem;
+    width: 0.8rem;
+  }
+
+  .dashboard-pie-legend strong {
+    color: var(--dashboard-ink);
+    font-size: 0.92rem;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-pie-legend span {
+    color: rgba(193, 255, 208, 0.72);
+    font-size: 0.78rem;
+  }
+
+  .dashboard-pie-legend b {
+    color: var(--dashboard-neo-soft);
+    font-size: 0.92rem;
+    font-weight: 700;
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .dashboard-pie-note {
+    color: rgba(232, 255, 232, 0.72);
+    margin: 0;
+  }
+
+  .dashboard-donut-detail {
+    background: radial-gradient(circle at top, rgba(16, 37, 28, 0.98), rgba(4, 8, 7, 0.99));
+    border: 1px solid var(--dashboard-border);
+    border-radius: 20px;
+    box-shadow: 0 28px 60px rgba(0, 0, 0, 0.32);
+    display: grid;
+    gap: 0.85rem;
+    max-width: 320px;
+    padding: 1rem 1.1rem;
+    position: absolute;
+    right: 1.25rem;
+    top: 1.25rem;
+    width: min(320px, calc(100% - 2.5rem));
+    z-index: 4;
+  }
+
+  .dashboard-donut-detail[hidden] {
+    display: none;
+  }
+
+  .dashboard-donut-detail-header {
+    align-items: start;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+  }
+
+  .dashboard-donut-detail-close {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: rgba(193, 255, 208, 0.66);
+    cursor: pointer;
+    font-size: 1.3rem;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .dashboard-donut-detail-close:hover {
+    color: var(--dashboard-neo);
+  }
+
+  .dashboard-donut-detail h5 {
+    color: var(--dashboard-neo);
+    margin: 0;
+  }
+
+  .dashboard-donut-detail p,
+  .dashboard-donut-detail li {
+    color: rgba(224, 255, 232, 0.82);
+    margin: 0;
+  }
+
+  .dashboard-donut-detail ul {
+    display: grid;
+    gap: 0.55rem;
+    margin: 0;
+    padding-left: 1rem;
+  }
+
+  .dashboard-table .table,
+  .dashboard-table .table-responsive {
+    margin-bottom: 0;
+  }
+
+  .dashboard-table .table {
+    --bs-table-bg: transparent;
+    --bs-table-color: rgba(224, 255, 232, 0.82);
+    --bs-table-border-color: rgba(89, 244, 173, 0.12);
+  }
+
+  .dashboard-table thead th {
+    color: var(--dashboard-muted);
+  }
+
+  @media (max-width: 1360px) {
+    .dashboard-summary-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dashboard-module-grid,
+    .dashboard-support-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .dashboard-hero,
+    .dashboard-hero-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .dashboard-summary-grid,
+    .dashboard-module-cards,
+    .dashboard-module-charts {
+      grid-template-columns: 1fr;
+    }
+
+    .dashboard-pie-visual {
+      grid-template-columns: 1fr;
+    }
+
+    .dashboard-donut-detail {
+      margin-top: 1rem;
+      max-width: none;
+      position: static;
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with branch_name=branch|dig:"name"|default:"Configura una sucursal" event_name=event|dig:"name"|default:"Selecciona o crea un evento para empezar a operar." event_switch_label=event|dig:"name"|default:"Cambiar evento" %}
+<div class="dashboard-shell dashboard-analytics">
+    <section class="hero-panel dashboard-hero">
+        <div>
+            <p class="eyebrow">Contexto activo</p>
+            <h3>{{ branch_name }}</h3>
+            <p class="mb-0">{{ event_name }}</p>
+        </div>
+        <div class="dashboard-hero-actions">
+            {% if can_switch_context and available_events %}
+            <div class="dropdown">
+                <button class="btn btn-outline-dark dropdown-toggle" data-bs-toggle="dropdown" type="button">
+                    {{ event_switch_label }}
+                </button>
+                <ul class="dropdown-menu dropdown-menu-dark">
+                    {% for event_option in available_events %}
+                    <li><a class="dropdown-item" href="{% url 'events:switch' event_option.id %}">{{ event_option.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            {% if can_manage_events_configuration and current_branch %}
+            <a href="{% url 'events:create' %}" class="btn btn-dark">Nuevo evento</a>
+            {% endif %}
+            {% if can_access_catalog %}
+            <a href="{% url 'catalog:create' %}" class="btn btn-outline-dark">Nuevo producto</a>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if can_access_attendees and can_access_sales %}
+    <section class="panel-card">
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">Resumen general</span>
+                <h4>Consolidado del evento</h4>
+                <p class="metric-helper mb-0">Entrada y Barra separadas, con total operativo unificado.</p>
+            </div>
+        </div>
+
+        <div class="dashboard-summary-grid">
+            {% include "shared_ui/components/metric_card.html" with label="Ingresos totales" value=dashboard_summary.metrics.income_total helper="Entrada + Barra" number_format="currency" %}
+            {% include "shared_ui/components/metric_card.html" with label="Gastos totales" value=dashboard_summary.metrics.expense_total helper="Todos los gastos del evento" number_format="currency" %}
+            {% include "shared_ui/components/metric_card.html" with label="Vaciados totales" value=dashboard_summary.metrics.cash_drop_total helper="Retiros de Entrada y Barra" number_format="currency" %}
+            {% include "shared_ui/components/metric_card.html" with label="Neto operativo" value=dashboard_summary.metrics.net_operating helper="Ingresos - gastos" number_format="currency" %}
+            {% include "shared_ui/components/metric_card.html" with label="Saldo en caja" value=dashboard_summary.metrics.cash_balance helper="Ingresos - gastos - vaciados" number_format="currency" %}
+        </div>
+
+        <div class="dashboard-support-grid">
+            {% include "shared_ui/components/dashboard_pie_panel.html" with title="Ingresos por modulo" eyebrow="Ingresos" chart=combined_analytics.income_chart summary_label="Total" summary_value=dashboard_summary.metrics.income_total summary_format="currency" summary_helper="Entrada + Barra" value_format="currency" note="Comparativo entre los ingresos de Entrada y Barra." %}
+            {% include "shared_ui/components/dashboard_pie_panel.html" with title="Gastos y vaciados" eyebrow="Caja" chart=combined_analytics.outflow_chart summary_label="Total" summary_value=dashboard_summary.metrics.expense_total|add:dashboard_summary.metrics.cash_drop_total summary_format="currency" summary_helper="Salida total de caja" value_format="currency" note="Gastos y retiros separados por modulo." %}
+        </div>
+
+        <div class="panel-card dashboard-table">
+            <div class="panel-header">
+                <div>
+                    <span class="eyebrow">Movimientos</span>
+                    <h4>Entrada de dinero, gastos y vaciados</h4>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Hora</th>
+                            <th>Modulo</th>
+                            <th>Tipo</th>
+                            <th>Detalle</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for movement in dashboard_summary.recent_cash_movements %}
+                        <tr>
+                            <td>{{ movement.created_at|date:"d/m H:i" }}</td>
+                            <td>{{ movement.get_module_display }}</td>
+                            <td>{{ movement.get_movement_type_display }}</td>
+                            <td>{{ movement.description|default:"Sin detalle" }}</td>
+                            <td data-number="{{ movement.total_amount }}" data-format="currency">$ {{ movement.total_amount }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5">Aun no hay movimientos de caja para este evento.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="dashboard-module-grid">
+        {% if can_access_attendees %}
+        <article class="panel-card dashboard-module-card">
+            <div class="panel-header">
+                <div>
+                    <span class="eyebrow">Entrada</span>
+                    <h4>Operacion de acceso</h4>
+                    <p class="metric-helper mb-0">Asistentes, recaudo manual, Dia del evento, gastos y vaciados.</p>
+                </div>
+            </div>
+
+            <div class="dashboard-module-cards">
+                {% include "shared_ui/components/metric_card.html" with label="Asistentes" value=entrada_analytics.metrics.attendees helper="Registrados en el evento" %}
+                {% include "shared_ui/components/metric_card.html" with label="Ingresaron" value=entrada_analytics.metrics.checked_in helper="Check-in confirmado" %}
+                {% include "shared_ui/components/metric_card.html" with label="Pendientes" value=entrada_analytics.metrics.pending helper="Aun sin ingreso" %}
+                {% include "shared_ui/components/metric_card.html" with label="Ingreso total" value=entrada_analytics.metrics.income_total helper="Manual + Dia del evento" number_format="currency" %}
+                {% include "shared_ui/components/metric_card.html" with label="Gastos entrada" value=entrada_analytics.metrics.expense_total helper="Salidas de Entrada" number_format="currency" %}
+                {% include "shared_ui/components/metric_card.html" with label="Vaciado entrada" value=entrada_analytics.metrics.cash_drop_total helper="Retiros en Entrada" number_format="currency" %}
+            </div>
+
+            <div class="dashboard-module-charts">
+                {% include "shared_ui/components/dashboard_pie_panel.html" with title="Ingresados vs pendientes" eyebrow="Acceso" chart=entrada_analytics.access_chart summary_label="Base" summary_value=entrada_analytics.metrics.attendees summary_helper="Asistentes del evento" note="Progreso operativo del acceso." %}
+                {% include "shared_ui/components/dashboard_pie_panel.html" with title="Ingreso manual vs Dia del evento" eyebrow="Ingresos" chart=entrada_analytics.income_chart summary_label="Total entrada" summary_value=entrada_analytics.metrics.income_total summary_format="currency" summary_helper="Sin doble conteo" value_format="currency" note="Separacion de fuentes de ingreso de Entrada." %}
+                {% include "shared_ui/components/dashboard_pie_panel.html" with title="Metodos de pago de Entrada" eyebrow="Pagos" chart=entrada_analytics.payments_chart summary_label="Registrado" summary_value=entrada_analytics.payments_chart.total summary_format="currency" summary_helper="Solo Dia del evento" value_format="currency" note="Entrada manual aun no registra medio de pago." %}
+                {% include "shared_ui/components/dashboard_pie_panel.html" with title="Categorias de acceso" eyebrow="Categorias" chart=entrada_analytics.categories_chart summary_label="Asistentes" summary_value=entrada_analytics.metrics.attendees summary_helper="Distribucion por categoria" note="Detalle operativo de categorias del evento." %}
+            </div>
+
+            <div class="panel-card dashboard-table">
+                <div class="panel-header">
+                    <div>
+                        <span class="eyebrow">Detalle</span>
+                        <h4>Categorias y recaudo manual</h4>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Categoria</th>
+                                <th>Ingresaron</th>
+                                <th>Pendientes</th>
+                                <th>Total</th>
+                                <th>Subtotal manual</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for category in entrada_analytics.categories %}
+                            <tr>
+                                <td>{{ category.name }}</td>
+                                <td data-number="{{ category.checked_in|default:'0' }}">{{ category.checked_in|default:"0" }}</td>
+                                <td data-number="{{ category.pending|default:'0' }}">{{ category.pending|default:"0" }}</td>
+                                <td data-number="{{ category.total|default:'0' }}">{{ category.total|default:"0" }}</td>
+                                <td data-number="{{ category.subtotal|default:'0' }}" data-format="currency">$ {{ category.subtotal|default:"0" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5">No hay categorias con asistentes en este evento.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </article>
+        {% endif %}
+
+        {% if can_access_sales %}
+        <article class="panel-card dashboard-module-card">
+            <div class="panel-header">
+                <div>
+                    <span class="eyebrow">Barra</span>
+                    <h4>Operacion de ventas</h4>
+                    <p class="metric-helper mb-0">Ventas, productos mas fuertes, gastos, vaciados y metodos de pago.</p>
+                </div>
+            </div>
+
+            <div class="dashboard-module-cards">
+                {% include "shared_ui/components/metric_card.html" with label="Vendido en barra" value=barra_analytics.metrics.income_total helper="Total de ventas del evento" number_format="currency" %}
+                {% include "shared_ui/components/metric_card.html" with label="Unidades" value=barra_analytics.metrics.units_sold helper="Productos vendidos" %}
+                {% include "shared_ui/components/metric_card.html" with label="Top por cantidad" value=barra_analytics.metrics.top_units_product_units helper=barra_analytics.metrics.top_units_product_name %}
+                {% include "shared_ui/components/metric_card.html" with label="Top por facturacion" value=barra_analytics.metrics.top_revenue_product_total helper=barra_analytics.metrics.top_revenue_product_name number_format="currency" %}
+                {% include "shared_ui/components/metric_card.html" with label="Gastos barra" value=barra_analytics.metrics.expense_total helper="Salidas de barra" number_format="currency" %}
+                {% include "shared_ui/components/metric_card.html" with label="Vaciado barra" value=barra_analytics.metrics.cash_drop_total helper="Retiros de barra" number_format="currency" %}
+            </div>
+
+            <div class="dashboard-module-charts">
+                {% include "shared_ui/components/dashboard_pie_panel.html" with title="Finanzas de Barra" eyebrow="Caja" chart=barra_analytics.finance_chart summary_label="Saldo barra" summary_value=barra_analytics.metrics.cash_balance summary_format="currency" summary_helper="Ingresos - gastos - vaciados" value_format="currency" note="Resultado operativo del modulo Barra." %}
+                {% include "shared_ui/components/dashboard_pie_panel.html" with title="Metodos de pago de Barra" eyebrow="Pagos" chart=barra_analytics.payments_chart summary_label="Registrado" summary_value=barra_analytics.payments_chart.total summary_format="currency" summary_helper="Solo ventas de barra" value_format="currency" note="No mezcla gastos ni vaciados." %}
+                {% include "shared_ui/components/dashboard_pie_panel.html" with title="Ventas por producto" eyebrow="Productos" chart=barra_analytics.products_chart summary_label="Unidades" summary_value=barra_analytics.metrics.units_sold summary_helper="Participacion por volumen" note="Los productos mas vendidos del evento." %}
+            </div>
+
+            <div class="panel-card dashboard-table">
+                <div class="panel-header">
+                    <div>
+                        <span class="eyebrow">Detalle</span>
+                        <h4>Productos mas vendidos</h4>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Unidades</th>
+                                <th>Facturacion</th>
+                                <th>Ventas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in barra_analytics.product_rows %}
+                            <tr>
+                                <td>{{ row.product__name }}</td>
+                                <td data-number="{{ row.units|default:'0' }}">{{ row.units|default:"0" }}</td>
+                                <td data-number="{{ row.revenue|default:'0' }}" data-format="currency">$ {{ row.revenue|default:"0" }}</td>
+                                <td data-number="{{ row.sales_count|default:'0' }}">{{ row.sales_count|default:"0" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4">Aun no hay ventas registradas en Barra.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </article>
+        {% endif %}
+    </section>
+
+    <article class="dashboard-donut-detail" id="dashboard-donut-detail" hidden>
+        <div class="dashboard-donut-detail-header">
+            <div>
+                <span class="eyebrow">Detalle</span>
+                <h5 id="dashboard-donut-detail-title"></h5>
+            </div>
+            <button type="button" class="dashboard-donut-detail-close" id="dashboard-donut-detail-close" aria-label="Cerrar detalle">&times;</button>
+        </div>
+        <p id="dashboard-donut-detail-body"></p>
+        <ul id="dashboard-donut-detail-points"></ul>
+    </article>
+</div>
+{% endwith %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (() => {
+    const slices = Array.from(document.querySelectorAll("[data-dashboard-slice]"));
+    const detail = document.getElementById("dashboard-donut-detail");
+    const title = document.getElementById("dashboard-donut-detail-title");
+    const body = document.getElementById("dashboard-donut-detail-body");
+    const points = document.getElementById("dashboard-donut-detail-points");
+    const closeButton = document.getElementById("dashboard-donut-detail-close");
+    if (!slices.length || !detail || !title || !body || !points || !closeButton) {
+      return;
+    }
+
+    let activeSlice = null;
+
+    const sliceSignature = (slice) => `${slice.dataset.detailTitle || ""}::${slice.dataset.detailBody || ""}`;
+
+    const hideDetail = () => {
+      activeSlice = null;
+      slices.forEach((item) => item.classList.remove("is-active"));
+      detail.hidden = true;
+    };
+
+    const showDetail = (slice) => {
+      if (activeSlice === slice) {
+        hideDetail();
+        return;
+      }
+      activeSlice = slice;
+      const signature = sliceSignature(slice);
+      slices.forEach((item) => item.classList.toggle("is-active", sliceSignature(item) === signature));
+      title.textContent = slice.dataset.detailTitle || "Detalle";
+      body.textContent = slice.dataset.detailBody || "";
+      points.innerHTML = "";
+      try {
+        const items = JSON.parse(slice.dataset.detailPoints || "[]");
+        items.forEach((item) => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          points.appendChild(li);
+        });
+      } catch (error) {
+        points.innerHTML = "";
+      }
+      detail.hidden = false;
+    };
+
+    slices.forEach((slice) => {
+      slice.addEventListener("click", () => showDetail(slice));
+    });
+
+    closeButton.addEventListener("click", hideDetail);
+    document.addEventListener("click", (event) => {
+      if (detail.hidden) {
+        return;
+      }
+      if (detail.contains(event.target) || event.target.closest("[data-dashboard-slice]")) {
+        return;
+      }
+      hideDetail();
+    });
+  })();
+</script>
+{% endblock %}

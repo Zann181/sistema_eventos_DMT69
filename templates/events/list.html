@@ -1,0 +1,46 @@
+{% extends "shared_ui/base.html" %}
+{% load safe_lookup %}
+
+{% block title %}Eventos{% endblock %}
+{% block page_title %}Eventos{% endblock %}
+
+{% block content %}
+<section class="panel-card">
+    <div class="panel-header">
+        <div>
+            <span class="eyebrow">Programacion</span>
+            <h4>{{ branch|dig:"name"|default:"Sucursal" }}</h4>
+        </div>
+        {% if can_manage_events_configuration and branch %}
+        <a href="{% url 'events:create' %}" class="btn btn-dark">Nuevo evento</a>
+        {% endif %}
+    </div>
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Evento</th>
+                    <th>Ventana</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in events %}
+                <tr>
+                    <td>{{ event.name }}</td>
+                    <td>{{ event.starts_at|date:"d/m/Y H:i" }} - {{ event.ends_at|date:"d/m/Y H:i" }}</td>
+                    <td>{{ event.get_status_display }}</td>
+                    <td class="text-end">
+                        <a href="{% url 'events:switch' event.id %}" class="btn btn-sm btn-outline-dark">Activar</a>
+                        <a href="{% url 'events:update' event.id %}" class="btn btn-sm btn-dark">Editar</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4">No hay eventos cargados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

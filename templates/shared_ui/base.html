@@ -1,0 +1,178 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ brand_name }}{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+    <link href="{% static 'css/app.css' %}" rel="stylesheet">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}"
+    style="
+        --brand-primary: {{ theme_branch.primary_color|default:'#1d3557' }};
+        --brand-secondary: {{ theme_branch.secondary_color|default:'#e63946' }};
+        --page-bg: {{ theme_branch.page_background_color|default:'#f4f1ea' }};
+        --surface: {{ theme_branch.surface_color|default:'#fffdf8' }};
+        --panel: {{ theme_branch.panel_color|default:'#efe7dc' }};
+    "
+>
+    <div class="app-shell" id="app-shell">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div>
+                    <div class="brand-lockup">
+                        {% if theme_branch.logo %}
+                        <img src="{{ theme_branch.logo.url }}" alt="Logo {{ theme_branch_name }}" class="brand-logo">
+                        {% endif %}
+                        <span class="eyebrow">{{ brand_name }}</span>
+                    </div>
+                    <h1>{{ sidebar_title }}</h1>
+                </div>
+            </div>
+
+            {% if can_switch_event_context %}
+            <div class="branch-context">
+                <div class="context-item">
+                    <span class="label">Evento activo</span>
+                    <div class="dropdown">
+                        <button class="btn btn-context dropdown-toggle" data-bs-toggle="dropdown" type="button">
+                            {{ current_event_label }}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            {% for event in available_events %}
+                            <li><a class="dropdown-item" href="{% url 'events:switch' event.id %}">{{ event.name }}</a></li>
+                            {% empty %}
+                            <li><span class="dropdown-item-text">Sin eventos</span></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <nav class="sidebar-nav">
+                <div class="nav-group {% if request.resolver_match.app_name == 'shared_ui' or request.resolver_match.app_name == 'attendees' or request.resolver_match.app_name == 'sales' or request.resolver_match.app_name == 'catalog' %}is-open{% endif %}">
+                    <button
+                        class="nav-group-toggle"
+                        type="button"
+                        data-nav-group
+                        aria-expanded="{% if request.resolver_match.app_name == 'shared_ui' or request.resolver_match.app_name == 'attendees' or request.resolver_match.app_name == 'sales' or request.resolver_match.app_name == 'catalog' %}true{% else %}false{% endif %}"
+                    >
+                        <span>Operacion</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="nav-group-menu">
+                        <a href="{% url 'shared_ui:dashboard' %}" class="nav-link"><i class="fa-solid fa-chart-line"></i><span>Dashboard</span></a>
+                        {% if current_role == "entrada" %}
+                        {% include "shared_ui/components/attendees_nav_links.html" %}
+                        {% elif current_role == "barra" %}
+                        {% include "shared_ui/components/sales_nav_links.html" %}
+                        {% else %}
+                        {% if can_access_attendees %}
+                        <div class="nav-group nav-subgroup {% if request.resolver_match.app_name == 'attendees' %}is-open{% endif %}">
+                            <button
+                                class="nav-group-toggle"
+                                type="button"
+                                data-nav-group
+                                aria-expanded="{% if request.resolver_match.app_name == 'attendees' %}true{% else %}false{% endif %}"
+                            >
+                                <span><i class="fa-solid fa-door-open"></i> Entrada</span>
+                                <i class="fa-solid fa-chevron-down"></i>
+                            </button>
+                            <div class="nav-group-menu">
+                                {% include "shared_ui/components/attendees_nav_links.html" %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if can_access_sales %}
+                        <div class="nav-group nav-subgroup {% if request.resolver_match.app_name == 'sales' %}is-open{% endif %}">
+                            <button
+                                class="nav-group-toggle"
+                                type="button"
+                                data-nav-group
+                                aria-expanded="{% if request.resolver_match.app_name == 'sales' %}true{% else %}false{% endif %}"
+                            >
+                                <span><i class="fa-solid fa-martini-glass-citrus"></i> Barra</span>
+                                <i class="fa-solid fa-chevron-down"></i>
+                            </button>
+                            <div class="nav-group-menu">
+                                {% include "shared_ui/components/sales_nav_links.html" %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if can_access_catalog %}
+                        <a href="{% url 'catalog:list' %}" class="nav-link"><i class="fa-solid fa-box-open"></i><span>Catalogo</span></a>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if can_manage_configuration %}
+                <div class="nav-group {% if request.resolver_match.app_name == 'branches' or request.resolver_match.app_name == 'events' %}is-open{% endif %}">
+                    <button
+                        class="nav-group-toggle"
+                        type="button"
+                        data-nav-group
+                        aria-expanded="{% if request.resolver_match.app_name == 'branches' or request.resolver_match.app_name == 'events' %}true{% else %}false{% endif %}"
+                    >
+                        <span>Configuracion</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="nav-group-menu">
+                        {% if can_manage_branch_configuration %}
+                        <a href="{% url 'branches:list' %}" class="nav-link">Sucursales</a>
+                        {% endif %}
+                        {% if can_manage_events_configuration %}
+                        <a href="{% url 'events:list' %}" class="nav-link">Eventos</a>
+                        {% endif %}
+                        {% if can_manage_branch_configuration or can_manage_events_configuration %}
+                        {% if current_branch %}
+                        <a href="{% url 'branches:update' current_branch.slug %}?tab=staff" class="nav-link">Personal</a>
+                        {% else %}
+                        <a href="{% url 'branches:list' %}" class="nav-link">Personal</a>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </nav>
+        </aside>
+
+        <main class="content {% if current_role == 'entrada' or current_role == 'barra' %}content-compact-topbar{% endif %}">
+            <header class="topbar {% if current_role == 'entrada' or current_role == 'barra' %}topbar-floating{% endif %}">
+                <div class="topbar-title">
+                    <button class="btn btn-outline-dark topbar-menu-toggle" type="button" data-sidebar-toggle aria-label="Mostrar u ocultar menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div>
+                        <p class="eyebrow mb-1">{{ brand_name }}</p>
+                        <h2 class="page-title mb-0">{% block page_title %}Dashboard{% endblock %}</h2>
+                    </div>
+                </div>
+                <div class="topbar-actions">
+                    <span class="user-pill">{{ request.user.username }}</span>
+                    <a href="{% url 'logout' %}" class="btn btn-outline-dark">Salir</a>
+                </div>
+            </header>
+
+            {% if messages %}
+            <section class="flash-stack">
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/shared/number-format.js' %}"></script>
+    <script src="{% static 'js/shared/layout.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,293 @@
+{% extends "shared_ui/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<section class="panel-grid branch-editor-grid">
+    <article class="panel-card" data-tab-scope data-tab-key="branch-editor">
+        <div class="tab-switch">
+            <button
+                type="button"
+                class="tab-button {% if active_tab == 'general' %}is-active{% endif %}"
+                data-tab-target="general"
+            >
+                General
+            </button>
+            <button
+                type="button"
+                class="tab-button {% if active_tab == 'categories' %}is-active{% endif %}"
+                data-tab-target="categories"
+                {% if not form.instance.pk %}disabled{% endif %}
+            >
+                Categorias
+            </button>
+            <button
+                type="button"
+                class="tab-button {% if active_tab == 'staff' %}is-active{% endif %}"
+                data-tab-target="staff"
+                {% if not form.instance.pk %}disabled{% endif %}
+            >
+                Personal
+            </button>
+        </div>
+
+        <section class="tab-panel {% if active_tab == 'general' %}is-active{% endif %}" data-tab-panel="general">
+            <form method="post" enctype="multipart/form-data" class="form-grid" id="branch-form">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="general">
+
+                <div class="form-section">
+                    <span class="eyebrow">Sucursal</span>
+                    <div class="form-grid">
+                        {{ form.name.as_field_group }}
+                        {{ form.slug.as_field_group }}
+                        {{ form.code_prefix.as_field_group }}
+                        {{ form.contact_email.as_field_group }}
+                        {{ form.contact_phone.as_field_group }}
+                        {{ form.is_active.as_field_group }}
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <span class="eyebrow">Branding</span>
+                    <div class="form-grid">
+                        {{ form.logo.as_field_group }}
+                    </div>
+                    <div class="color-grid expanded">
+                        <div class="color-field">{{ form.primary_color.label_tag }}{{ form.primary_color }}</div>
+                        <div class="color-field">{{ form.secondary_color.label_tag }}{{ form.secondary_color }}</div>
+                        <div class="color-field">{{ form.page_background_color.label_tag }}{{ form.page_background_color }}</div>
+                        <div class="color-field">{{ form.surface_color.label_tag }}{{ form.surface_color }}</div>
+                        <div class="color-field">{{ form.panel_color.label_tag }}{{ form.panel_color }}</div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-dark">Guardar sucursal</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="tab-panel {% if active_tab == 'categories' %}is-active{% endif %}" data-tab-panel="categories">
+            {% if form.instance.pk %}
+            <div class="panel-header align-items-start">
+                <div>
+                    <span class="eyebrow">Categorias</span>
+                    <h4 class="mb-1">Categorias universales de la sucursal</h4>
+                    <p class="metric-helper mb-0">Estas categorias aplican para todos los eventos de la sucursal y se usan en Entrada.</p>
+                </div>
+            </div>
+
+            <form method="post" class="form-grid compact-form">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="categories">
+                <div class="form-grid">
+                    {{ category_form.name.as_field_group }}
+                    {{ category_form.included_consumptions.as_field_group }}
+                    {{ category_form.price.as_field_group }}
+                    {{ category_form.is_active.as_field_group }}
+                    {{ category_form.description.as_field_group }}
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-dark">Guardar categoria</button>
+                </div>
+            </form>
+
+            <div class="table-responsive mt-4">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Categoria</th>
+                            <th>Consumiciones</th>
+                            <th>Precio</th>
+                            <th>Estado</th>
+                            <th>Descripcion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for category in branch_categories %}
+                        <tr>
+                            <td><strong>{{ category.name }}</strong></td>
+                            <td data-number="{{ category.included_consumptions|default:'0' }}">{{ category.included_consumptions|default:"0" }}</td>
+                            <td data-number="{{ category.price|default:'0' }}" data-format="currency">$ {{ category.price|default:"0" }}</td>
+                            <td>
+                                <span class="badge {% if category.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                    {% if category.is_active %}Activa{% else %}Inactiva{% endif %}
+                                </span>
+                            </td>
+                            <td>{{ category.description|default:"-" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5">No hay categorias configuradas todavia.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="metric-helper mb-0">Guarda la sucursal primero para poder administrar categorias.</p>
+            {% endif %}
+        </section>
+
+        <section class="tab-panel {% if active_tab == 'staff' %}is-active{% endif %}" data-tab-panel="staff">
+            {% if form.instance.pk %}
+            <div class="panel-header align-items-start">
+                <div>
+                    <span class="eyebrow">Personal</span>
+                    <h4 class="mb-1">Asignaciones por evento</h4>
+                    <p class="metric-helper mb-0">Desde la sucursal principal el super admin puede crear administradores de eventos o personal operativo y definir exactamente a que eventos entra cada uno.</p>
+                </div>
+            </div>
+
+            <form method="post" class="form-grid compact-form">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="staff">
+                {{ staff_form.user_id }}
+                <div class="form-grid">
+                    {{ staff_form.username.as_field_group }}
+                    {{ staff_form.password.as_field_group }}
+                    {{ staff_form.first_name.as_field_group }}
+                    {{ staff_form.last_name.as_field_group }}
+                    {{ staff_form.email.as_field_group }}
+                    {{ staff_form.role.as_field_group }}
+                    <div class="field-group branch-events-selector">
+                        <label class="field-label">{{ staff_form.events.label }}</label>
+                        {% if staff_form.events.help_text %}
+                        <p class="metric-helper mb-2">{{ staff_form.events.help_text }}</p>
+                        {% endif %}
+                        {% if staff_form.events.errors %}
+                        <div class="alert alert-danger py-2">
+                            {% for error in staff_form.events.errors %}
+                            <div>{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="branch-event-checklist">
+                            {% for checkbox in staff_form.events %}
+                            <label class="branch-event-option">
+                                <span class="branch-event-option-input">{{ checkbox.tag }}</span>
+                                <span class="branch-event-option-copy">{{ checkbox.choice_label }}</span>
+                            </label>
+                            {% empty %}
+                            <div class="metric-helper">No hay eventos disponibles todavia.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {{ staff_form.is_active.as_field_group }}
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-dark">
+                        {% if editing_staff_user %}Guardar cambios{% else %}Guardar personal{% endif %}
+                    </button>
+                    {% if editing_staff_user %}
+                    <a href="{% url 'branches:update' branch.slug %}?tab=staff" class="btn btn-outline-dark">Cancelar edicion</a>
+                    {% endif %}
+                </div>
+            </form>
+
+            {% if editing_staff_user %}
+            <div class="branch-staff-events-panel mt-4">
+                <div class="panel-header align-items-start">
+                    <div>
+                        <span class="eyebrow">Eventos</span>
+                        <h5 class="mb-1">Eventos disponibles para {{ editing_staff_user.username }}</h5>
+                        <p class="metric-helper mb-0">Aqui puedes ver todos los eventos de la sucursal y activarlos o desactivarlos rapidamente para este usuario.</p>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Evento</th>
+                                <th>Fecha</th>
+                                <th>Estado</th>
+                                <th class="text-end">Accion</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in editing_staff_events %}
+                            <tr>
+                                <td><strong>{{ row.event.name }}</strong></td>
+                                <td>{{ row.event.starts_at|date:"d/m/Y g:i A" }}</td>
+                                <td>
+                                    <span class="badge {% if row.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                        {% if row.is_active %}Activo{% else %}Inactivo{% endif %}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <form method="post" action="{% url 'branches:staff_event_toggle' branch.slug editing_staff_user.id row.event.id %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-dark">
+                                            {% if row.is_active %}Desactivar{% else %}Activar{% endif %}
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4">No hay eventos creados todavia para esta sucursal.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="table-responsive mt-4">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Usuario</th>
+                            <th>Eventos</th>
+                            <th>Rol</th>
+                            <th>Estado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in staff_rows %}
+                        <tr>
+                            <td>
+                                <strong>{{ row.user.username }}</strong><br>
+                                <small>{{ row.user.get_full_name|default:row.user.email|default:"-" }}</small>
+                            </td>
+                            <td>
+                                {% if row.events %}
+                                <div class="d-flex flex-wrap gap-2">
+                                    {% for event in row.events %}
+                                    <span class="badge {% if event.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                        {{ event.name }}
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <span class="metric-helper">Sin eventos asignados</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ row.role_display }}</td>
+                            <td>
+                                <span class="badge {% if row.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                    {% if row.is_active %}Activo{% else %}Inactivo{% endif %}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <a href="{% url 'branches:update' branch.slug %}?tab=staff&edit_user={{ row.user.id }}" class="btn btn-sm btn-outline-dark">
+                                    Editar
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not staff_rows %}
+                        <tr><td colspan="5">No hay personal asignado todavia.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="metric-helper mb-0">Guarda la sucursal primero para poder administrar su personal.</p>
+            {% endif %}
+        </section>
+    </article>
+
+</section>
+{% endblock %}

@@ -1,0 +1,331 @@
+{% extends "shared_ui/base.html" %}
+{% load static safe_lookup %}
+
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% with branch_name=branch|dig:"name"|default:"Sucursal Principal" logo_url=asset_preview|dig:"logo.url" logo_name=asset_preview|dig:"logo.name"|default:"" flyer_url=asset_preview|dig:"flyer.url" flyer_name=asset_preview|dig:"flyer.name"|default:"" %}
+<section class="panel-grid event-editor-grid">
+    <article class="panel-card">
+        <form
+            method="post"
+            enctype="multipart/form-data"
+            class="form-grid event-form-grid"
+            id="event-form"
+            data-qr-preview-url="{% url 'events:qr_preview' %}"
+            data-event-id="{% if form.instance.pk %}{{ form.instance.pk }}{% endif %}"
+        >
+            {% csrf_token %}
+            {% if form.errors %}
+            <div class="alert alert-warning">
+                <strong>No se pudo guardar el evento.</strong>
+                {% if form.non_field_errors %}
+                <div class="mt-2">{{ form.non_field_errors }}</div>
+                {% endif %}
+                <ul class="mb-0 mt-2">
+                    {% for field in form %}
+                        {% for error in field.errors %}
+                        <li>{{ field.label|default:field.name }}: {{ error }}</li>
+                        {% endfor %}
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            <div class="form-section">
+                <span class="eyebrow">Evento</span>
+                <div class="form-grid">
+                    {{ form.name.as_field_group }}
+                    {{ form.slug.as_field_group }}
+                    {{ form.description.as_field_group }}
+                    {{ form.starts_at.as_field_group }}
+                    {{ form.ends_at }}
+                    {{ form.status }}
+                    {{ form.qr_prefix.as_field_group }}
+                    <div class="file-field-group">
+                        <label class="form-label" for="{{ form.logo.id_for_label }}">{{ form.logo.label }}</label>
+                        {{ form.logo }}
+                        {{ form.logo.errors }}
+                        <p class="file-field-note">Solo PNG. Se conserva el logo actual y se usa tambien en el QR.</p>
+                        <div class="file-preview-card" data-file-preview-card="logo" {% if not logo_url %}hidden{% endif %}>
+                            <span class="eyebrow" data-file-preview-label="logo">Logo actual</span>
+                            <img src="{{ logo_url|default:'data:,' }}" alt="Logo actual del evento" class="file-preview-image file-preview-image--logo" data-file-preview-image="logo">
+                            <small data-file-preview-name="logo">{{ logo_name }}</small>
+                        </div>
+                    </div>
+                    <div class="file-field-group">
+                        <label class="form-label" for="{{ form.flyer.id_for_label }}">{{ form.flyer.label }}</label>
+                        {{ form.flyer }}
+                        {{ form.flyer.errors }}
+                        <p class="file-field-note">Si no seleccionas un archivo, se conserva el flyer actual.</p>
+                        <div class="file-preview-card" data-file-preview-card="flyer" {% if not flyer_url %}hidden{% endif %}>
+                            <span class="eyebrow" data-file-preview-label="flyer">Flyer actual</span>
+                            <img src="{{ flyer_url|default:'data:,' }}" alt="Flyer actual del evento" class="file-preview-image" data-file-preview-image="flyer">
+                            <small data-file-preview-name="flyer">{{ flyer_name }}</small>
+                        </div>
+                    </div>
+                    {{ form.access_policy.as_field_group }}
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="panel-header align-items-start">
+                    <div>
+                        <span class="eyebrow">Correo</span>
+                        <h4 class="mb-1">Plantilla y preview</h4>
+                        <p class="metric-helper mb-0">Define asunto, contenido y la paleta de colores del correo de confirmacion.</p>
+                    </div>
+                </div>
+                <div class="email-config-grid stacked">
+                    <section class="form-section-subgroup is-open" data-collapsible-section>
+                        <button class="section-toggle" type="button" data-section-toggle aria-expanded="true">
+                            <span class="eyebrow">Encabezado</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="form-grid" data-section-content>
+                            {{ form.email_subject.as_field_group }}
+                            {{ form.email_preheader.as_field_group }}
+                            {{ form.email_heading.as_field_group }}
+                            {{ form.email_intro.as_field_group }}
+                        </div>
+                    </section>
+
+                    <section class="form-section-subgroup" data-collapsible-section>
+                        <button class="section-toggle" type="button" data-section-toggle aria-expanded="false">
+                            <span class="eyebrow">Mensaje principal</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="form-grid" data-section-content>
+                            {{ form.email_message_title.as_field_group }}
+                            {{ form.email_body.as_field_group }}
+                        </div>
+                    </section>
+
+                    <section class="form-section-subgroup" data-collapsible-section>
+                        <button class="section-toggle" type="button" data-section-toggle aria-expanded="false">
+                            <span class="eyebrow">Aviso importante</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="form-grid" data-section-content>
+                            {{ form.email_warning_title.as_field_group }}
+                            {{ form.email_warning_text.as_field_group }}
+                        </div>
+                    </section>
+
+                    <section class="form-section-subgroup" data-collapsible-section>
+                        <button class="section-toggle" type="button" data-section-toggle aria-expanded="false">
+                            <span class="eyebrow">Detalles del evento</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="form-grid" data-section-content>
+                            {{ form.email_details_title.as_field_group }}
+                            {{ form.email_date_text.as_field_group }}
+                            {{ form.email_time_text.as_field_group }}
+                            {{ form.venue_name.as_field_group }}
+                            {{ form.maps_url.as_field_group }}
+                            {{ form.maps_label.as_field_group }}
+                            {{ form.dress_code.as_field_group }}
+                        </div>
+                    </section>
+
+                    <section class="form-section-subgroup" data-collapsible-section>
+                        <button class="section-toggle" type="button" data-section-toggle aria-expanded="false">
+                            <span class="eyebrow">Bloque QR y cierre</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="form-grid" data-section-content>
+                            {{ form.email_qr_title.as_field_group }}
+                            {{ form.email_qr_note.as_field_group }}
+                            {{ form.email_footer.as_field_group }}
+                            {{ form.email_closing_text.as_field_group }}
+                            {{ form.email_team_signature.as_field_group }}
+                            {{ form.email_legal_note.as_field_group }}
+                        </div>
+                    </section>
+
+                    <section class="form-section-subgroup" data-collapsible-section>
+                        <button class="section-toggle" type="button" data-section-toggle aria-expanded="false">
+                            <span class="eyebrow">Colores</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="color-grid expanded" data-section-content>
+                            <div class="color-field">{{ form.email_background_color.label_tag }}{{ form.email_background_color }}</div>
+                            <div class="color-field">{{ form.email_card_color.label_tag }}{{ form.email_card_color }}</div>
+                            <div class="color-field">{{ form.email_header_background_color.label_tag }}{{ form.email_header_background_color }}</div>
+                            <div class="color-field">{{ form.email_text_color.label_tag }}{{ form.email_text_color }}</div>
+                            <div class="color-field">{{ form.email_muted_text_color.label_tag }}{{ form.email_muted_text_color }}</div>
+                            <div class="color-field">{{ form.email_accent_color.label_tag }}{{ form.email_accent_color }}</div>
+                            <div class="color-field">{{ form.email_border_color.label_tag }}{{ form.email_border_color }}</div>
+                            <div class="color-field">{{ form.email_section_background_color.label_tag }}{{ form.email_section_background_color }}</div>
+                            <div class="color-field">{{ form.email_warning_background_color.label_tag }}{{ form.email_warning_background_color }}</div>
+                        </div>
+                    </section>
+
+                    <section class="form-section-subgroup" data-collapsible-section>
+                        <button class="section-toggle" type="button" data-section-toggle aria-expanded="false">
+                            <span class="eyebrow">QR</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="form-grid" data-section-content>
+                            <p class="file-field-note">El QR usa automaticamente el logo principal del evento. No hay un segundo selector de logo.</p>
+                            {{ form.qr_logo_scale.as_field_group }}
+                            <div class="color-grid">
+                                <div class="color-field">{{ form.qr_fill_color.label_tag }}{{ form.qr_fill_color }}</div>
+                                <div class="color-field">{{ form.qr_background_color.label_tag }}{{ form.qr_background_color }}</div>
+                                <div class="color-field">{{ form.qr_logo_background_color.label_tag }}{{ form.qr_logo_background_color }}</div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                <div class="placeholder-note">
+                    Variables disponibles: <code>{nombre_asistente}</code>, <code>{nombre_evento}</code>, <code>{nombre_sucursal}</code>, <code>{fecha_evento}</code>, <code>{hora_evento}</code>, <code>{nombre_categoria}</code>, <code>{cedula_asistente}</code>, <code>{precio_categoria}</code>, <code>{codigo_qr}</code>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-dark">Guardar evento</button>
+            </div>
+        </form>
+    </article>
+
+    <article class="panel-card">
+        <div class="panel-header align-items-start">
+            <div>
+                <span class="eyebrow">Preview</span>
+                <h4 class="mb-1">Asi se vera el correo</h4>
+                <p class="metric-helper mb-0">El asunto, la informacion y la paleta cambian en tiempo real.</p>
+            </div>
+        </div>
+        <div class="email-preview-shell">
+            <div class="email-subject-preview">
+                <span class="eyebrow">Asunto</span>
+                <strong data-email-preview-output="subject" data-preview-input="id_email_subject" class="preview-editable">{{ form.email_subject.value|default:"Tu acceso esta listo: Evento" }}</strong>
+            </div>
+            <p class="preview-edit-hint">Haz click sobre el texto del preview para editarlo.</p>
+            <div
+                class="email-preview-card"
+                data-email-preview-card
+                style="
+                    --email-bg: {{ form.email_background_color.value|default:'#f6f2eb' }};
+                    --email-card: {{ form.email_card_color.value|default:'#ffffff' }};
+                    --email-header-bg: {{ form.email_header_background_color.value|default:'#111315' }};
+                    --email-text: {{ form.email_text_color.value|default:'#172121' }};
+                    --email-muted: {{ form.email_muted_text_color.value|default:'#bdbdbd' }};
+                    --email-accent: {{ form.email_accent_color.value|default:'#c44536' }};
+                    --email-border: {{ form.email_border_color.value|default:'#1f1f22' }};
+                    --email-section: {{ form.email_section_background_color.value|default:'#18191b' }};
+                    --email-warning: {{ form.email_warning_background_color.value|default:'#2a1c17' }};
+                "
+            >
+                <div class="email-preview-content">
+                    <div class="email-preview-header">
+                        <p class="email-preview-brandline">
+                            <span data-email-preview-output="event-name" data-preview-input="id_name" class="preview-editable">{{ form.name.value|default:"Evento Demo" }}</span>
+                        </p>
+                        <p class="email-preview-preheader preview-editable" data-email-preview-output="preheader" data-preview-input="id_email_preheader">
+                            {{ form.email_preheader.value|default:"Popayan se viste de negro - Todos de negro - Closing 2025" }}
+                        </p>
+                    </div>
+
+                    <section class="email-preview-section">
+                        <h3 data-email-preview-output="heading" data-preview-input="id_email_heading" class="preview-editable">{{ form.email_heading.value|default:"Hola Andrea" }}</h3>
+                        <p class="email-preview-intro preview-editable" data-email-preview-output="intro" data-preview-input="id_email_intro">
+                            {{ form.email_intro.value|default:"Tu asistencia ha sido confirmada. Abajo tienes la informacion oficial del evento:" }}
+                        </p>
+                    </section>
+
+                    <section class="email-preview-highlight">
+                        <span class="email-preview-section-label preview-editable" data-email-preview-output="messageTitle" data-preview-input="id_email_message_title">
+                            {{ form.email_message_title.value|default:"Mensaje del evento" }}
+                        </span>
+                        <div class="email-preview-body preview-editable" data-email-preview-output="body" data-preview-input="id_email_body">{{ form.email_body.value|default:"Tu registro fue confirmado."|linebreaksbr }}</div>
+                    </section>
+
+                    <section class="email-preview-alert">
+                        <span class="email-preview-section-label preview-editable" data-email-preview-output="warningTitle" data-preview-input="id_email_warning_title">
+                            {{ form.email_warning_title.value|default:"Importante" }}
+                        </span>
+                        <p data-email-preview-output="warningText" data-preview-input="id_email_warning_text" class="preview-editable">
+                            {{ form.email_warning_text.value|default:"Agrega una politica de acceso o una nota importante para el asistente." }}
+                        </p>
+                    </section>
+
+                    <figure class="email-preview-flyer-wrap {% if not flyer_url %}is-empty{% endif %}">
+                        <img
+                            data-email-preview-output="flyer-image"
+                            src="{{ flyer_url|default:'data:,' }}"
+                            alt="Flyer del evento"
+                        >
+                        <div class="email-preview-flyer-empty">
+                            <strong>Flyer del evento</strong>
+                            <span>Cuando cargues una imagen, aparecera aqui en tiempo real.</span>
+                        </div>
+                    </figure>
+
+                    <div class="email-preview-meta">
+                        <span class="email-preview-section-label preview-editable" data-email-preview-output="detailsTitle" data-preview-input="id_email_details_title">
+                            {{ form.email_details_title.value|default:"Detalles" }}
+                        </span>
+                        <p><strong>Evento:</strong> <span data-email-preview-output="event-name-secondary">{{ form.name.value|default:"Evento Demo" }}</span></p>
+                        <p><strong>Fecha:</strong> <span data-email-preview-output="dateText" data-preview-input="id_email_date_text" class="preview-editable inline-editable">{{ form.email_date_text.value|default:"Viernes 19 de Diciembre de 2025 (DIC 19)" }}</span></p>
+                        <p><strong>Hora:</strong> <span data-email-preview-output="timeText" data-preview-input="id_email_time_text" class="preview-editable inline-editable">{{ form.email_time_text.value|default:"9:00 PM" }}</span></p>
+                        <p><strong>Lugar:</strong> <span data-email-preview-output="venue" data-preview-input="id_venue_name" class="preview-editable inline-editable">{{ form.venue_name.value|default:"Terrazas Campestres - K3 Via Totoro" }}</span></p>
+                        <p>
+                            <strong>Ubicacion:</strong>
+                            <a href="{{ form.maps_url.value|default:'#' }}" data-email-preview-output="mapsLink" target="_blank" rel="noreferrer">
+                                <span data-email-preview-output="mapsLabel" data-preview-input="id_maps_label" class="preview-editable inline-editable">{{ form.maps_label.value|default:"Abrir en Google Maps" }}</span>
+                            </a>
+                        </p>
+                        <p><strong>Dress code:</strong> <span data-email-preview-output="dressCode" data-preview-input="id_dress_code" class="preview-editable inline-editable">{{ form.dress_code.value|default:"Todos de negro" }}</span></p>
+                    </div>
+
+                    <div class="email-preview-ticket">
+                        <p><strong>Nombre:</strong> Andrea</p>
+                        <p><strong>Cedula:</strong> 1234567890</p>
+                        <p><strong>Categoria:</strong> VIP</p>
+                        <p><strong>Precio:</strong> 45000</p>
+                        <p class="email-preview-ticket-title preview-editable" data-email-preview-output="qrTitle" data-preview-input="id_email_qr_title">
+                            {{ form.email_qr_title.value|default:"Tu codigo QR esta adjunto a este correo" }}
+                        </p>
+                        <p class="email-preview-ticket-note preview-editable" data-email-preview-output="qrNote" data-preview-input="id_email_qr_note">
+                            {{ form.email_qr_note.value|default:"Presentalo junto a tu cedula en la entrada." }}
+                        </p>
+                    </div>
+
+                    <section class="email-preview-section email-preview-closing">
+                        <p class="email-preview-footer-text preview-editable" data-email-preview-output="footer" data-preview-input="id_email_footer">
+                            {{ form.email_footer.value|default:"Presenta este correo al ingresar." }}
+                        </p>
+                        <p class="email-preview-closing-text preview-editable" data-email-preview-output="closingText" data-preview-input="id_email_closing_text">
+                            {{ form.email_closing_text.value|default:"Nos vemos pronto." }}
+                        </p>
+                        <p class="email-preview-closing-brand">
+                            <span data-email-preview-output="teamSignature" data-preview-input="id_email_team_signature" class="preview-editable">{{ form.email_team_signature.value|default:"Equipo Evento Demo" }}</span>
+                        </p>
+                    </section>
+
+                    <div class="email-preview-qr-wrap">
+                        <div
+                            class="email-preview-qr-card"
+                            data-email-preview-qr-card
+                        >
+                            <img data-email-preview-output="qrImage" alt="Codigo QR de ejemplo">
+                        </div>
+                    </div>
+
+                    <div class="email-preview-legal">
+                        <span data-email-preview-output="legalNote" data-preview-input="id_email_legal_note" class="preview-editable">
+                            {{ form.email_legal_note.value|default:"Correo automatico - conserva tu QR hasta el dia del evento." }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </article>
+</section>
+{% endwith %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/events/email-preview.js' %}"></script>
+{% endblock %}

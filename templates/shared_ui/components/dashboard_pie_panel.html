@@ -1,0 +1,65 @@
+<article class="panel-card dashboard-pie-panel {{ panel_class|default:'' }}">
+    <div>
+        {% if eyebrow %}
+        <span class="eyebrow">{{ eyebrow }}</span>
+        {% endif %}
+        <h5>{{ title }}</h5>
+    </div>
+    {% if chart.segments %}
+    <div class="dashboard-pie-visual">
+        <div class="dashboard-pie-chart">
+            <svg viewBox="0 0 100 100" aria-label="{{ aria_label|default:title }}">
+                <circle class="dashboard-pie-base" cx="50" cy="50" r="46"></circle>
+                {% for segment in chart.segments %}
+                {% if segment.path %}
+                <path
+                    class="dashboard-pie-slice dashboard-donut"
+                    d="{{ segment.path }}"
+                    fill="{{ segment.color }}"
+                    style="--slice-offset-x: {{ segment.offset_x }}px; --slice-offset-y: {{ segment.offset_y }}px;"
+                    data-dashboard-slice
+                    data-detail-title="{{ segment.name }}"
+                    data-detail-body="{{ segment.detail_body }}"
+                    data-detail-points="{{ segment.detail_points_json|escape }}"
+                ></path>
+                {% endif %}
+                {% endfor %}
+            </svg>
+            <div class="dashboard-pie-summary">
+                <span>{{ summary_label }}</span>
+                <strong{% if summary_format %} data-number="{{ summary_value|default:'0' }}" data-format="{{ summary_format }}"{% else %} data-number="{{ summary_value|default:'0' }}"{% endif %}>
+                    {% if summary_format == "currency" %}$ {% endif %}{{ summary_value|default:"0"|floatformat:0 }}
+                </strong>
+                {% if summary_helper %}
+                <small>{{ summary_helper }}</small>
+                {% endif %}
+            </div>
+        </div>
+        <div class="dashboard-pie-legend">
+            {% for segment in chart.segments %}
+            <button
+                type="button"
+                data-dashboard-slice
+                data-detail-title="{{ segment.name }}"
+                data-detail-body="{{ segment.detail_body }}"
+                data-detail-points="{{ segment.detail_points_json|escape }}"
+            >
+                <i class="dashboard-pie-dot" style="background: {{ segment.color }};"></i>
+                <div>
+                    <strong>{{ segment.name }}</strong>
+                    <span>{{ segment.share|floatformat:0 }}% del total</span>
+                </div>
+                <b{% if value_format %} data-number="{{ segment.value|default:'0' }}" data-format="{{ value_format }}"{% endif %}>
+                    {% if value_format == "currency" %}$ {% endif %}{{ segment.value|default:"0"|floatformat:0 }}
+                </b>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+    {% if note %}
+    <p class="dashboard-pie-note">{{ note }}</p>
+    {% endif %}
+    {% else %}
+    <div class="metric-helper">{{ empty_text|default:"Aun no hay datos para mostrar." }}</div>
+    {% endif %}
+</article>

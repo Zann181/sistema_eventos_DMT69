@@ -1,0 +1,47 @@
+{% extends "shared_ui/base.html" %}
+
+{% block title %}Sucursales{% endblock %}
+{% block page_title %}Sucursales{% endblock %}
+
+{% block content %}
+<section class="panel-grid">
+    <article class="panel-card">
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">Principal</span>
+                <h4>Sucursal principal</h4>
+            </div>
+            {% if not principal_branch_exists %}
+            <a href="{% url 'branches:create' %}" class="btn btn-dark">Crear sucursal principal</a>
+            {% endif %}
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Prefijo</th>
+                        <th>Contacto</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for branch in branches %}
+                    <tr>
+                        <td>{{ branch.name }}</td>
+                        <td>{{ branch.code_prefix }}</td>
+                        <td>{{ branch.contact_email|default:"-" }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'branches:update' branch.slug %}?tab=staff" class="btn btn-sm btn-outline-dark">Personal</a>
+                            <a href="{% url 'branches:update' branch.slug %}" class="btn btn-sm btn-dark">Editar</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4">Aun no existe la sucursal principal.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+{% endblock %}

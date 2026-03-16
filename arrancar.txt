@@ -1,34 +1,23 @@
-python manage.py runserver_plus --cert-file certs/localhost+3.pem --key-file certs/localhost+3-key.pem
+.\venv\Scripts\Activate.ps1
 
+Base de datos por defecto:
+DB_NAME=evento_db_clean_20260316
 
-ngrok http 8000 --host-header=localhost:8000
+Recrear base limpia:
+venv\Scripts\python -c "import pymysql; conn=pymysql.connect(host='127.0.0.1', user='root', password='12345678', port=3306, autocommit=True); cur=conn.cursor(); cur.execute('DROP DATABASE IF EXISTS evento_db_clean_20260316'); cur.execute('CREATE DATABASE evento_db_clean_20260316 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'); cur.close(); conn.close()"
 
+Aplicar migraciones:
+venv\Scripts\python manage.py migrate
 
-# Terminal 1
-python manage.py runserver_plus --cert-file certs/localhost+3.pem --key-file certs/localhost+3-key.pem 0.0.0.0:8000
+Levantar servidor local:
+venv\Scripts\python manage.py runserver_plus --cert-file certs/localhost+3.pem --key-file certs/localhost+3-key.pem 0.0.0.0:8000
 
-# Terminal 2
+Exponer con ngrok:
 ngrok http https://localhost:8000
 
-usuario Contraseña
-motas  12345678@
-entrada 
-barra 12345678@
+Opcional para previews publicos:
+$env:WHATSAPP_MEDIA_BASE_URL="https://tu-subdominio.ngrok-free.app"
+$env:EMAIL_MEDIA_BASE_URL="https://tu-subdominio.ngrok-free.app"
 
-
-
-
-
-Cambiar nombre del evento core/models.py
-linea 235
-  
-        # Información del evento
-        evento_text = f"DMT 69 - Evento xxxx"
-
-
-modificar datos de correo core/utils.py
-
-def enviar_email_bienvenida(asistente):
-    """Envía email de bienvenida con QR al asistente"""
-
-
+Credenciales locales:
+motas 12345678@

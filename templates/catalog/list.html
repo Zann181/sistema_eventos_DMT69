@@ -1,0 +1,35 @@
+{% extends "shared_ui/base.html" %}
+{% load safe_lookup %}
+
+{% block title %}Catalogo{% endblock %}
+{% block page_title %}Catalogo de barra{% endblock %}
+
+{% block content %}
+<section class="panel-grid">
+    <article class="panel-card">
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">Productos</span>
+                <h4>{{ branch|dig:"name"|default:"Sucursal" }}</h4>
+            </div>
+            <a href="{% url 'catalog:create' %}" class="btn btn-dark">Nuevo producto</a>
+        </div>
+        <div class="catalog-grid">
+            {% for product in products %}
+            <article class="product-card">
+                {% if product.image %}
+                <img src="{{ product.image.url }}" alt="{{ product.name }}">
+                {% endif %}
+                <div>
+                    <h5>{{ product.name }}</h5>
+                    <p>{{ product.description|default:"Sin descripcion" }}</p>
+                    <span>${{ product.price }}</span>
+                </div>
+            </article>
+            {% empty %}
+            <p>No hay productos cargados.</p>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+{% endblock %}

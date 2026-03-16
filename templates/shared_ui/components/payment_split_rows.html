@@ -1,0 +1,61 @@
+<div class="payment-breakdown" data-payment-breakdown data-prefix="{{ prefix }}">
+    <div class="payment-breakdown-header">
+        <div>
+            <span class="eyebrow">Pagos</span>
+            <h6 class="mb-1">Formas de pago</h6>
+            <small class="text-muted">Puedes dividir el total hasta en 4 medios.</small>
+        </div>
+        <button type="button" class="btn btn-outline-dark btn-sm" data-add-payment-row>
+            <i class="fas fa-plus"></i> Agregar forma
+        </button>
+    </div>
+
+    {% for index in "1234" %}
+    <div class="payment-breakdown-row{% if not forloop.first %} d-none{% endif %}" data-payment-row>
+        <div class="payment-breakdown-row-head">
+            <span class="payment-breakdown-row-title">Forma {{ forloop.counter }}</span>
+            <button type="button" class="btn btn-outline-dark btn-sm" data-remove-payment-row>
+                <i class="fas fa-trash"></i> Eliminar
+            </button>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Metodo {{ forloop.counter }}</label>
+                <select name="{{ prefix }}_payment_method_{{ forloop.counter }}" class="form-select payment-method-select">
+                    <option value=""{% if not forloop.first %} selected{% endif %}>Selecciona</option>
+                    <option value="efectivo"{% if forloop.first %} selected{% endif %}>Efectivo</option>
+                    <option value="qr">QR</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Monto</label>
+                <input
+                    type="text"
+                    name="{{ prefix }}_payment_amount_{{ forloop.counter }}"
+                    class="form-control"
+                    inputmode="decimal"
+                    data-thousands="true"
+                    data-decimals="2"
+                >
+            </div>
+            <div class="col-md-4">
+                {% if show_change_field %}
+                <label class="form-label">Devueltas</label>
+                <div class="payment-change-display" data-payment-change-output>$ 0</div>
+                {% else %}
+                <label class="form-label">Referencia</label>
+                <input type="text" name="{{ prefix }}_payment_reference_{{ forloop.counter }}" class="form-control">
+                {% endif %}
+            </div>
+        </div>
+        <div class="row g-3 mt-1 transfer-proof-row d-none" data-transfer-proof-row>
+            <div class="col-12">
+                <label class="form-label">Foto de transferencia</label>
+                <input type="file" name="{{ prefix }}_payment_proof_{{ forloop.counter }}" class="form-control" accept="image/*" capture="environment">
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>

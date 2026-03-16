@@ -1,0 +1,11 @@
+<article class="metric-card">
+    <span class="metric-label">{{ label }}</span>
+    <strong
+        class="metric-value"
+        {% if number_format %}data-number="{{ value }}"{% endif %}
+        {% if number_format == "currency" %}data-format="currency"{% endif %}
+    >{{ value }}</strong>
+    {% if helper %}
+    <small class="metric-helper">{{ helper }}</small>
+    {% endif %}
+</article>

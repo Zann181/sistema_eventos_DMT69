@@ -1,0 +1,12 @@
+<article class="donut-stat" style="--donut-progress: {{ progress|default:0 }}%; --donut-accent: {{ accent|default:'#00ff7a' }};">
+    <div class="donut-ring">
+        <div class="donut-ring-inner">
+            <strong>{{ value }}</strong>
+            {% if center_label %}<span>{{ center_label }}</span>{% endif %}
+        </div>
+    </div>
+    <div class="donut-copy">
+        <h5>{{ title }}</h5>
+        {% if subtitle %}<p>{{ subtitle }}</p>{% endif %}
+    </div>
+</article>

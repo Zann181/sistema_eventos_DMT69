@@ -1,0 +1,135 @@
+{% load safe_lookup %}
+<div class="table-responsive">
+    <table class="table table-dark table-striped align-middle mb-0 neon-table-dark">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Cedula</th>
+                <th>Categoria</th>
+                <th>Correo</th>
+                <th>Precio</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for attendee in attendees %}
+            <tr>
+                <td>
+                    <strong>{{ attendee.name }}</strong>
+                </td>
+                <td>{{ attendee.cc }}</td>
+                <td>
+                    <span class="badge bg-secondary">{{ attendee.category.name }}</span><br>
+                    <small>{{ attendee.phone|default:"Sin telefono" }}</small>
+                </td>
+                <td>{{ attendee.email|default:"Sin correo" }}</td>
+                <td data-number="{{ attendee.paid_amount|default:'0' }}" data-format="currency">$ {{ attendee.paid_amount|default:"0" }}</td>
+                <td>
+                    {% if attendee.has_checked_in %}
+                    <span class="badge bg-success">Ingreso</span><br>
+                    <small>{{ attendee.checked_in_by|dig:"username"|default:"N/A" }}</small>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">Pendiente</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group-vertical btn-group-sm">
+                        <button class="btn btn-outline-info" type="button" onclick="window.verQR('{{ attendee.cc }}')">
+                            <i class="fas fa-qrcode"></i> QR
+                        </button>
+                        <button
+                            class="btn btn-outline-warning"
+                            type="button"
+                            title="Enviar por WhatsApp"
+                            aria-label="Enviar por WhatsApp"
+                            data-whatsapp-share
+                            data-whatsapp-web-url="{{ attendee.whatsapp_url }}"
+                            data-share-text="{{ attendee.whatsapp_share_text }}"
+                            data-share-card-url="{{ attendee.whatsapp_card_url }}"
+                            data-qr-file-url="{{ attendee.whatsapp_qr_file_url }}"
+                            data-flyer-file-url="{{ attendee.whatsapp_flyer_file_url }}"
+                        >
+                            <i class="fa-brands fa-whatsapp"></i>
+                        </button>
+                        {% if not attendee.has_checked_in %}
+                        <button class="btn btn-success" type="button" onclick="window.marcarIngreso('{{ attendee.cc }}')">
+                            <i class="fas fa-check"></i> Ingreso
+                        </button>
+                        <button class="btn btn-danger" type="button" onclick="window.eliminarAsistente('{{ attendee.cc }}')">
+                            <i class="fas fa-trash"></i> Eliminar
+                        </button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" class="text-center text-muted">No se encontraron asistentes con los filtros aplicados.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if paginator %}
+<div class="table-footer">
+    <div class="footer-meta">
+        Mostrando {{ showing_start }} - {{ showing_end }} de {{ total }} asistentes
+    </div>
+    <div class="footer-items">
+        <label for="items-selector">Mostrar</label>
+        <select id="items-selector" class="form-control form-control-sm neon-select">
+            <option value="10" {% if items_per_page == 10 %}selected{% endif %}>10</option>
+            <option value="25" {% if items_per_page == 25 %}selected{% endif %}>25</option>
+            <option value="50" {% if items_per_page == 50 %}selected{% endif %}>50</option>
+            <option value="100" {% if items_per_page == 100 %}selected{% endif %}>100</option>
+        </select>
+    </div>
+</div>
+
+{% if paginator.num_pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center mb-2 neon-pagination">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <button class="page-link" type="button" onclick="window.irAPagina(1)">
+                <i class="fas fa-angle-double-left"></i>
+            </button>
+        </li>
+        <li class="page-item">
+            <button class="page-link" type="button" onclick="window.irAPagina({{ page_obj.previous_page_number }})">
+                <i class="fas fa-angle-left"></i>
+            </button>
+        </li>
+        {% endif %}
+
+        {% for num in paginator.page_range %}
+            {% if num == page_obj.number %}
+            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+            {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
+            <li class="page-item">
+                <button class="page-link" type="button" onclick="window.irAPagina({{ num }})">{{ num }}</button>
+            </li>
+            {% endif %}
+        {% endfor %}
+
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <button class="page-link" type="button" onclick="window.irAPagina({{ page_obj.next_page_number }})">
+                <i class="fas fa-angle-right"></i>
+            </button>
+        </li>
+        <li class="page-item">
+            <button class="page-link" type="button" onclick="window.irAPagina({{ paginator.num_pages }})">
+                <i class="fas fa-angle-double-right"></i>
+            </button>
+        </li>
+        {% endif %}
+    </ul>
+    <div class="text-center">
+        <small class="text-muted">Pagina {{ page_obj.number }} de {{ paginator.num_pages }}</small>
+    </div>
+</nav>
+{% endif %}
+{% endif %}
