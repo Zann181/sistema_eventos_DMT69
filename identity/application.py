@@ -21,7 +21,7 @@ def build_permission_flags(user, branch=None, event=None, role=None):
         UserBranchMembership.ROLE_EVENT_ADMIN,
         UserBranchMembership.ROLE_BAR,
     }
-    can_access_catalog_flag = effective_role in {"admin"}
+    can_access_catalog_flag = effective_role in {"admin", UserBranchMembership.ROLE_EVENT_ADMIN}
     can_switch_context_flag = effective_role in {"admin", UserBranchMembership.ROLE_EVENT_ADMIN}
     return {
         "current_role": effective_role,

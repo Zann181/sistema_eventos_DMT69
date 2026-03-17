@@ -11,19 +11,44 @@
             <div>
                 <span class="eyebrow">Productos</span>
                 <h4>Catalogo global</h4>
+                {% if event %}
+                <p class="metric-helper mb-0">Vista global del catalogo con el estado actual para {{ event.name }}.</p>
+                {% endif %}
             </div>
-            <a href="{% url 'catalog:create' %}" class="btn btn-dark">Nuevo producto</a>
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="{% url 'catalog:create' %}" class="btn btn-dark">Nuevo producto</a>
+                {% if can_configure_event_products %}
+                <a href="{% url 'sales:pos' %}?action=evento-productos" class="btn btn-outline-dark">Editar por evento</a>
+                {% endif %}
+            </div>
         </div>
         <div class="catalog-grid">
-            {% for product in products %}
+            {% for row in product_rows %}
             <article class="product-card">
-                {% if product.image %}
-                <img src="{{ product.image.url }}" alt="{{ product.name }}">
+                {% if row.product.image %}
+                <img src="{{ row.product.image.url }}" alt="{{ row.product.name }}">
                 {% endif %}
                 <div>
-                    <h5>{{ product.name }}</h5>
-                    <p>{{ product.description|default:"Sin descripcion" }}</p>
-                    <span>{% if product.is_active %}Activo{% else %}Inactivo{% endif %}</span>
+                    <h5>{{ row.product.name }}</h5>
+                    <p>{{ row.product.description|default:"Sin descripcion" }}</p>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <span>{% if row.product.is_active %}Activo{% else %}Inactivo{% endif %}</span>
+                        {% if event %}
+                        <span class="badge {% if row.is_enabled %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                            {% if row.is_enabled %}Habilitado en evento{% else %}No habilitado{% endif %}
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if event %}
+                    <p class="mb-0 mt-2">
+                        Precio en {{ event.name }}:
+                        {% if row.event_price %}
+                        <strong data-number="{{ row.event_price }}" data-format="currency">$ {{ row.event_price }}</strong>
+                        {% else %}
+                        <strong>Sin precio configurado</strong>
+                        {% endif %}
+                    </p>
+                    {% endif %}
                 </div>
             </article>
             {% empty %}

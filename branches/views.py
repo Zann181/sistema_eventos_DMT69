@@ -8,7 +8,13 @@ from attendees.models import Category
 from branches.forms import BranchForm, BranchStaffForm
 from attendees.forms import BranchCategoryForm
 from branches.models import Branch, get_principal_branch
-from identity.application import get_manageable_staff_events, get_user_branches, user_can_manage_branch, user_can_manage_staff
+from identity.application import (
+    get_manageable_staff_events,
+    get_user_branches,
+    is_global_admin,
+    user_can_manage_branch,
+    user_can_manage_staff,
+)
 from identity.models import UserBranchMembership, UserEventAssignment
 
 
@@ -71,6 +77,16 @@ def _user_is_event_admin_in_branch(user, branch):
         role=UserBranchMembership.ROLE_EVENT_ADMIN,
         is_active=True,
     ).exists()
+
+
+def _disable_user_if_without_access(user):
+    if is_global_admin(user):
+        return
+    has_active_memberships = UserBranchMembership.objects.filter(user=user, is_active=True).exists()
+    has_active_assignments = UserEventAssignment.objects.filter(user=user, is_active=True).exists()
+    if not has_active_memberships and not has_active_assignments and user.is_active:
+        user.is_active = False
+        user.save(update_fields=["is_active"])
 
 
 @login_required
@@ -242,6 +258,44 @@ def branch_assignment_toggle(request, slug, assignment_id):
     assignment.save(update_fields=["is_active", "updated_at"])
     state = "activada" if assignment.is_active else "desactivada"
     messages.success(request, f"Asignacion {state} para {assignment.user.username} en {assignment.event.name}.")
+    return redirect(f"{redirect('branches:update', slug=branch.slug).url}?tab=staff")
+
+
+@login_required
+@require_POST
+def branch_staff_delete(request, slug, user_id):
+    branch = get_object_or_404(Branch, slug=slug)
+    if not (user_can_manage_branch(request.user, branch) or user_can_manage_staff(request.user, branch, getattr(request, "current_event", None))):
+        messages.error(request, "No tienes permisos para administrar esta sucursal.")
+        return redirect("shared_ui:dashboard")
+
+    user = get_object_or_404(User, pk=user_id)
+    if user == request.user:
+        messages.error(request, "No puedes eliminar tu propio acceso desde esta pantalla.")
+        return redirect(f"{redirect('branches:update', slug=branch.slug).url}?tab=staff")
+
+    if not user_can_manage_branch(request.user, branch) and _user_is_event_admin_in_branch(user, branch):
+        messages.error(request, "No tienes permisos para eliminar administradores de eventos.")
+        return redirect(f"{redirect('branches:update', slug=branch.slug).url}?tab=staff")
+
+    if user_can_manage_branch(request.user, branch):
+        UserEventAssignment.objects.filter(user=user, branch=branch).delete()
+        UserBranchMembership.objects.filter(user=user, branch=branch).delete()
+        _disable_user_if_without_access(user)
+        messages.success(request, f"Usuario {user.username} eliminado de {branch.name}.")
+        return redirect(f"{redirect('branches:update', slug=branch.slug).url}?tab=staff")
+
+    manageable_events = get_manageable_staff_events(request.user, branch)
+    removed_assignments = UserEventAssignment.objects.filter(user=user, branch=branch, event__in=manageable_events)
+    if not removed_assignments.exists():
+        messages.error(request, "No tienes permisos para eliminar este usuario en los eventos seleccionados.")
+        return redirect(f"{redirect('branches:update', slug=branch.slug).url}?tab=staff")
+
+    removed_assignments.delete()
+    if not UserEventAssignment.objects.filter(user=user, branch=branch, is_active=True).exists():
+        UserBranchMembership.objects.filter(user=user, branch=branch).delete()
+    _disable_user_if_without_access(user)
+    messages.success(request, f"Acceso de {user.username} eliminado de tus eventos administrados.")
     return redirect(f"{redirect('branches:update', slug=branch.slug).url}?tab=staff")
 
 

@@ -956,6 +956,37 @@ class ModularArchitectureTests(TestCase):
             ).exists()
         )
 
+    def test_branch_staff_delete_removes_branch_access_without_deleting_history(self):
+        removable_user = User.objects.create_user(username="remover-personal", password="12345678@")
+        UserBranchMembership.objects.create(
+            user=removable_user,
+            branch=self.branch,
+            role=UserBranchMembership.ROLE_BAR,
+            is_active=True,
+        )
+        UserEventAssignment.objects.create(
+            user=removable_user,
+            branch=self.branch,
+            event=self.event,
+            role=UserBranchMembership.ROLE_BAR,
+            is_active=True,
+        )
+
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+
+        response = client.post(
+            reverse("branches:staff_delete", args=[self.branch.slug, removable_user.id]),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        removable_user.refresh_from_db()
+        self.assertFalse(removable_user.is_active)
+        self.assertFalse(UserBranchMembership.objects.filter(user=removable_user, branch=self.branch).exists())
+        self.assertFalse(UserEventAssignment.objects.filter(user=removable_user, branch=self.branch).exists())
+        self.assertNotContains(response, f"?tab=staff&edit_user={removable_user.id}", html=False)
+
     def test_branch_categories_are_managed_at_branch_level_and_used_in_attendee_form(self):
         client = Client()
         self.assertTrue(client.login(username="operador", password="12345678"))
@@ -1875,6 +1906,7 @@ class ModularArchitectureTests(TestCase):
         self.assertContains(dashboard_response, "Eventos")
         self.assertContains(dashboard_response, "Agregar producto")
         self.assertContains(dashboard_response, "Productos del evento")
+        self.assertContains(dashboard_response, "Catalogo")
         self.assertNotContains(dashboard_response, "Sucursales")
         self.assertContains(dashboard_response, "Personal")
 
@@ -1960,6 +1992,55 @@ class ModularArchitectureTests(TestCase):
         self.assertEqual(denied_response.status_code, 200)
         self.assertContains(denied_response, "Debes seleccionar al menos un evento.")
         self.assertFalse(User.objects.filter(username="entrada-denegada").exists())
+
+    def test_event_admin_can_delete_staff_from_managed_event(self):
+        event_admin = User.objects.create_user(username="evento-admin-delete", password="12345678@")
+        removable_user = User.objects.create_user(username="entrada-borrable", password="12345678@")
+        UserBranchMembership.objects.create(
+            user=event_admin,
+            branch=self.branch,
+            role=UserBranchMembership.ROLE_EVENT_ADMIN,
+            is_active=True,
+        )
+        UserEventAssignment.objects.create(
+            user=event_admin,
+            branch=self.branch,
+            event=self.event,
+            role=UserBranchMembership.ROLE_EVENT_ADMIN,
+            is_active=True,
+        )
+        UserBranchMembership.objects.create(
+            user=removable_user,
+            branch=self.branch,
+            role=UserBranchMembership.ROLE_ENTRANCE,
+            is_active=True,
+        )
+        UserEventAssignment.objects.create(
+            user=removable_user,
+            branch=self.branch,
+            event=self.event,
+            role=UserBranchMembership.ROLE_ENTRANCE,
+            is_active=True,
+        )
+
+        client = Client()
+        self.assertTrue(client.login(username="evento-admin-delete", password="12345678@"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.post(
+            reverse("branches:staff_delete", args=[self.branch.slug, removable_user.id]),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        removable_user.refresh_from_db()
+        self.assertFalse(removable_user.is_active)
+        self.assertFalse(UserBranchMembership.objects.filter(user=removable_user, branch=self.branch).exists())
+        self.assertFalse(UserEventAssignment.objects.filter(user=removable_user, branch=self.branch).exists())
+        self.assertContains(response, "Acceso de entrada-borrable eliminado de tus eventos administrados.")
 
     def test_event_admin_staff_tab_shows_events_even_with_old_branch_membership_role(self):
         event_admin = User.objects.create_user(username="evento-admin-legado", password="12345678@")
@@ -2078,6 +2159,51 @@ class ModularArchitectureTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "No tienes permisos para editar administradores de eventos.")
         self.assertNotContains(response, f'value="{other_admin.username}"', html=False)
+
+    def test_event_admin_can_open_catalog_and_create_global_product(self):
+        event_admin = User.objects.create_user(username="evento-admin-catalogo", password="12345678@")
+        UserBranchMembership.objects.create(
+            user=event_admin,
+            branch=self.branch,
+            role=UserBranchMembership.ROLE_EVENT_ADMIN,
+            is_active=True,
+        )
+        UserEventAssignment.objects.create(
+            user=event_admin,
+            branch=self.branch,
+            event=self.event,
+            role=UserBranchMembership.ROLE_EVENT_ADMIN,
+            is_active=True,
+        )
+        client = Client()
+        self.assertTrue(client.login(username="evento-admin-catalogo", password="12345678@"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        list_response = client.get(reverse("catalog:list"))
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "Editar por evento")
+        self.assertContains(list_response, self.event.name)
+
+        create_response = client.post(
+            reverse("catalog:create"),
+            {
+                "name": "Catalogo evento admin",
+                "description": "Creado desde catalogo",
+                "is_active": "on",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        product = Product.objects.get(name="Catalogo evento admin")
+        event_product = EventProduct.objects.get(branch=self.branch, event=self.event, product=product)
+        self.assertFalse(event_product.is_enabled)
+        self.assertIsNone(event_product.event_price)
+        self.assertContains(create_response, "Configura el precio del evento para habilitarlo.")
 
     def test_bar_role_sees_same_barra_submenu_actions(self):
         bar_user = User.objects.create_user(username="barra-menu", password="12345678@")

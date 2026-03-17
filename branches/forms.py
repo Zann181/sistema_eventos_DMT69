@@ -175,6 +175,9 @@ class BranchStaffForm(forms.Form):
             if new_value != getattr(user, field):
                 setattr(user, field, new_value)
                 updated_fields.append(field)
+        if not user.is_active:
+            user.is_active = True
+            updated_fields.append("is_active")
         if updated_fields:
             user.save(update_fields=updated_fields)
 

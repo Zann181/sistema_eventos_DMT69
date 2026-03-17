@@ -283,9 +283,19 @@
                                 </span>
                             </td>
                             <td class="text-end">
-                                <a href="{% url 'branches:update' branch.slug %}?tab=staff&edit_user={{ row.user.id }}" class="btn btn-sm btn-outline-dark">
-                                    Editar
-                                </a>
+                                <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                    <a href="{% url 'branches:update' branch.slug %}?tab=staff&edit_user={{ row.user.id }}" class="btn btn-sm btn-outline-dark">
+                                        Editar
+                                    </a>
+                                    {% if row.user.id != request.user.id %}
+                                    <form method="post" action="{% url 'branches:staff_delete' branch.slug row.user.id %}" onsubmit="return confirm('Eliminar el acceso de este usuario en esta sucursal o en tus eventos administrados?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            Eliminar
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
