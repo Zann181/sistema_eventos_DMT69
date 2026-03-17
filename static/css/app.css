@@ -282,6 +282,11 @@ body {
     text-shadow: none;
 }
 
+.sidebar-close-toggle {
+    display: none;
+    flex-shrink: 0;
+}
+
 .topbar-menu-toggle:hover,
 .topbar-menu-toggle:focus {
     background: rgba(57, 255, 20, 0.14);
@@ -1844,6 +1849,10 @@ textarea::placeholder {
         transform: translateX(0);
         opacity: 1;
         pointer-events: auto;
+    }
+
+    .sidebar-close-toggle {
+        display: inline-flex;
     }
 
     .metrics-grid,

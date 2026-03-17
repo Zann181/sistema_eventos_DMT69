@@ -1,6 +1,18 @@
 const appShell = document.getElementById("app-shell");
 const sidebar = document.getElementById("sidebar");
 const sidebarStorageKey = "dmt-sidebar-hidden";
+const isMobileViewport = () => window.innerWidth <= 1100;
+
+const setSidebarToggleExpanded = (isExpanded) => {
+  document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {
+    button.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+  });
+};
+
+const setMobileSidebarOpen = (isOpen) => {
+  sidebar?.classList.toggle("is-open", isOpen);
+  setSidebarToggleExpanded(isOpen);
+};
 
 const syncExpandableState = (button, container) => {
   button.setAttribute("aria-expanded", container.classList.contains("is-open") ? "true" : "false");
@@ -35,11 +47,15 @@ const applySidebarState = (isHidden) => {
     return;
   }
 
+  if (isMobileViewport()) {
+    appShell.classList.remove("sidebar-hidden");
+    setMobileSidebarOpen(false);
+    return;
+  }
+
   appShell.classList.toggle("sidebar-hidden", isHidden);
-  sidebar.classList.toggle("is-open", !isHidden && window.innerWidth <= 1100);
-  document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {
-    button.setAttribute("aria-expanded", isHidden ? "false" : "true");
-  });
+  sidebar.classList.remove("is-open");
+  setSidebarToggleExpanded(!isHidden);
 };
 
 const toggleSidebar = () => {
@@ -47,9 +63,8 @@ const toggleSidebar = () => {
     return;
   }
 
-  const isMobile = window.innerWidth <= 1100;
-  if (isMobile) {
-    sidebar?.classList.toggle("is-open");
+  if (isMobileViewport()) {
+    setMobileSidebarOpen(!sidebar?.classList.contains("is-open"));
     return;
   }
 
@@ -63,9 +78,8 @@ const hideSidebarAfterNavigation = () => {
     return;
   }
 
-  const isMobile = window.innerWidth <= 1100;
-  if (isMobile) {
-    sidebar?.classList.remove("is-open");
+  if (isMobileViewport()) {
+    setMobileSidebarOpen(false);
     return;
   }
 
@@ -93,13 +107,7 @@ const savedSidebarState = localStorage.getItem(sidebarStorageKey) === "1";
 applySidebarState(savedSidebarState);
 
 window.addEventListener("resize", () => {
-  const isMobile = window.innerWidth <= 1100;
-  if (isMobile) {
-    appShell?.classList.remove("sidebar-hidden");
-  } else {
-    applySidebarState(localStorage.getItem(sidebarStorageKey) === "1");
-    sidebar?.classList.remove("is-open");
-  }
+  applySidebarState(localStorage.getItem(sidebarStorageKey) === "1");
 });
 
 const updateTabInUrl = (tabName) => {

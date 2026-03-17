@@ -23,6 +23,7 @@ class SaleForm(forms.Form):
                 branch=branch,
                 event=event,
                 is_enabled=True,
+                event_price__isnull=False,
                 product__is_active=True,
             ).order_by("product__name")
             self.fields["event_product"].queryset = queryset
@@ -47,21 +48,14 @@ class BarProductForm(forms.ModelForm):
 
     class Meta:
         model = Product
-        fields = ["name", "image", "price", "is_active"]
+        fields = ["name", "description", "image", "is_active"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["name"].widget.attrs["class"] = "form-control"
+        self.fields["description"].widget = forms.Textarea(attrs={"rows": 3, "class": "form-control"})
         self.fields["image"].widget.attrs["class"] = "form-control"
         self.fields["is_active"].widget.attrs["class"] = "form-check-input"
-        self.fields["price"].widget = forms.TextInput(
-            attrs={
-                "class": "form-control",
-                "inputmode": "decimal",
-                "data-thousands": "true",
-                "data-decimals": "0",
-            }
-        )
 
 
 class EventDayEntryForm(forms.Form):

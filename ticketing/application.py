@@ -18,6 +18,24 @@ from django.utils.timezone import is_naive, make_aware
 from media_assets.application import persist_image_asset, resolve_field_file
 
 
+class CompatPythonEmailMessage(PythonEmailMessage):
+    def as_bytes(self, unixfrom=False, policy=None, linesep=None):
+        active_policy = policy or self.policy
+        if linesep is not None:
+            active_policy = active_policy.clone(linesep=linesep)
+        return super().as_bytes(unixfrom=unixfrom, policy=active_policy)
+
+    def as_string(self, unixfrom=False, maxheaderlen=None, policy=None, linesep=None):
+        active_policy = policy or self.policy
+        if linesep is not None:
+            active_policy = active_policy.clone(linesep=linesep)
+        return super().as_string(
+            unixfrom=unixfrom,
+            maxheaderlen=maxheaderlen,
+            policy=active_policy,
+        )
+
+
 class RelatedEmailMultiAlternatives(EmailMultiAlternatives):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -35,7 +53,7 @@ class RelatedEmailMultiAlternatives(EmailMultiAlternatives):
 
     def message(self, *, policy=email.policy.default):
         encoding = self.encoding or settings.DEFAULT_CHARSET
-        message = PythonEmailMessage(policy=policy)
+        message = CompatPythonEmailMessage(policy=policy)
         message["Subject"] = self.subject
         message["From"] = self.extra_headers.get("From", self.from_email)
         if self.to:

@@ -1,5 +1,4 @@
 import json
-from io import BytesIO
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -15,12 +14,10 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from openpyxl.styles import Alignment, Font, PatternFill
-from PIL import Image
-
 from attendees.application import check_in_attendee, get_attendee_for_branch
 from attendees.forms import AttendeeForm, BranchCategoryForm
 from attendees.models import Attendee, Category
-from identity.application import user_can_access_attendees
+from identity.application import user_can_access_attendees, user_can_manage_events
 from sales.application import create_cash_movement, extract_split_payments, register_event_day_entry, resolve_expense_payments
 from sales.forms import CashDropForm, EventDayEntryForm, ExpenseForm
 from sales.models import CashMovement, CashMovementPayment
@@ -53,6 +50,12 @@ def _build_attendee_form(branch, event, data=None, selected_category_id=None):
             initial["category"] = category.pk
             initial["paid_amount"] = category.price
     return AttendeeForm(data or None, branch=branch, event=event, initial=initial)
+
+
+def _get_editing_category(branch, category_id):
+    if not category_id:
+        return None
+    return branch.categories.filter(pk=category_id).first()
 
 
 def _get_branch_and_event(request):
@@ -147,18 +150,26 @@ def _build_whatsapp_file_url(request, name, qr_code):
     return _build_public_absolute_url(request, reverse(name, args=[qr_code]))
 
 
-def _build_flyer_share_bytes(attendee):
+def _build_flyer_share_payload(attendee):
     flyer_field = resolve_field_file(attendee.event, "flyer", "event_flyer") or getattr(attendee.event, "flyer", None)
     if not flyer_field:
         return None
     try:
         flyer_field.open("rb")
-        with Image.open(flyer_field) as flyer_image:
-            converted = flyer_image.convert("RGB")
-            buffer = BytesIO()
-            converted.save(buffer, format="JPEG", quality=90, optimize=True)
+        content = flyer_field.read()
         flyer_field.close()
-        return buffer.getvalue()
+        name = str(getattr(flyer_field, "name", "") or "")
+        lower_name = name.lower()
+        if lower_name.endswith(".webp"):
+            mimetype = "image/webp"
+        elif lower_name.endswith((".jpg", ".jpeg")):
+            mimetype = "image/jpeg"
+        elif lower_name.endswith(".png"):
+            mimetype = "image/png"
+        else:
+            mimetype = "application/octet-stream"
+        filename = name.rsplit("/", 1)[-1] if name else f"{attendee.event.slug or attendee.event.pk}-flyer.webp"
+        return {"content": content, "mimetype": mimetype, "filename": filename}
     except (FileNotFoundError, ValueError):
         return None
 
@@ -271,7 +282,17 @@ def _list_context(request, branch, event):
     }
 
 
-def _dashboard_context(request, branch, event, form=None, initial_tab="scanner", open_modal="", selected_category_id=None):
+def _dashboard_context(
+    request,
+    branch,
+    event,
+    form=None,
+    initial_tab="scanner",
+    open_modal="",
+    selected_category_id=None,
+    category_form=None,
+    editing_category=None,
+):
     attendees = _attendee_queryset(branch, event)
     today = timezone.localdate()
     categories = _category_summary(branch, event)
@@ -344,7 +365,9 @@ def _dashboard_context(request, branch, event, form=None, initial_tab="scanner",
         "branch": branch,
         "event": event,
         "form": form or _build_attendee_form(branch, event, selected_category_id=selected_category_id),
-        "category_form": BranchCategoryForm(branch=branch),
+        "category_form": category_form or BranchCategoryForm(branch=branch, instance=editing_category),
+        "editing_category": editing_category,
+        "branch_categories": branch.categories.order_by("name"),
         "event_day_form": EventDayEntryForm(branch=branch),
         "expense_form": ExpenseForm(),
         "cash_drop_form": CashDropForm(),
@@ -379,6 +402,7 @@ def attendee_list(request):
     if not open_modal and requested_tab in ATTENDEES_MODAL_TABS:
         open_modal = requested_tab
     selected_category_id = request.GET.get("selected_category")
+    editing_category = _get_editing_category(branch, request.GET.get("edit_category"))
     context = _dashboard_context(
         request,
         branch,
@@ -386,6 +410,7 @@ def attendee_list(request):
         initial_tab=initial_tab,
         open_modal=open_modal,
         selected_category_id=selected_category_id,
+        editing_category=editing_category,
     )
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(request, "attendees/_table.html", context)
@@ -468,11 +493,47 @@ def attendee_category_create(request):
             form=attendee_form,
             initial_tab=return_tab,
             open_modal="categorias",
+            category_form=form,
         )
-        context["category_form"] = form
         return render(request, "attendees/list.html", context, status=400)
 
     return redirect("attendees:list")
+
+
+@login_required
+def attendee_category_update(request, category_id):
+    branch, event = _get_branch_and_event(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _ensure_attendee_access(request, branch, event):
+        return redirect("shared_ui:dashboard")
+
+    category = get_object_or_404(Category, pk=category_id, branch=branch)
+    form = BranchCategoryForm(request.POST or None, branch=branch, instance=category)
+    return_tab = _sanitize_attendees_content_tab(request.POST.get("return_tab"), default="crear")
+    attendee_form = _build_attendee_form(branch, event)
+    if request.method == "POST":
+        if form.is_valid():
+            category = form.save()
+            messages.success(request, f"Categoria {category.name} actualizada.")
+            return redirect(
+                f"{reverse('attendees:list')}?tab={return_tab}&selected_category={category.pk}"
+            )
+
+        messages.error(request, "Corrige los datos de la categoria.")
+        context = _dashboard_context(
+            request,
+            branch,
+            event,
+            form=attendee_form,
+            initial_tab=return_tab,
+            open_modal="categorias",
+            category_form=form,
+            editing_category=category,
+        )
+        return render(request, "attendees/list.html", context, status=400)
+
+    return redirect(f"{reverse('attendees:list')}?tab={return_tab}&modal=categorias&edit_category={category.pk}")
 
 
 @login_required
@@ -773,7 +834,8 @@ def attendee_delete(request):
     attendee = _attendee_queryset(branch, event).filter(cc=cc).first()
     if not attendee:
         return JsonResponse({"success": False, "message": "Asistente no encontrado."}, status=404)
-    if attendee.has_checked_in:
+    can_manage_checked_in_attendees = user_can_manage_events(request.user, branch, event)
+    if attendee.has_checked_in and not can_manage_checked_in_attendees:
         return JsonResponse({"success": False, "message": "No se puede eliminar un asistente que ya ingreso."}, status=400)
 
     name = attendee.name
@@ -858,12 +920,12 @@ def attendee_whatsapp_flyer_file(request, qr_code):
         return redirect("shared_ui:dashboard")
 
     attendee = get_object_or_404(_attendee_queryset(branch, event), qr_code=qr_code)
-    image_bytes = _build_flyer_share_bytes(attendee)
-    if not image_bytes:
+    payload = _build_flyer_share_payload(attendee)
+    if not payload:
         return JsonResponse({"success": False, "message": "El evento no tiene flyer configurado."}, status=404)
 
-    response = HttpResponse(image_bytes, content_type="image/jpeg")
-    response["Content-Disposition"] = f'inline; filename="{attendee.event.slug or attendee.event.pk}-flyer.jpg"'
+    response = HttpResponse(payload["content"], content_type=payload["mimetype"])
+    response["Content-Disposition"] = f'inline; filename="{payload["filename"]}"'
     return response
 
 

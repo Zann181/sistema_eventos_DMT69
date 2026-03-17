@@ -219,12 +219,12 @@
             <div class="modal-header">
                 <div class="quick-category-header mb-0">
                     <span class="eyebrow">Categorias</span>
-                    <h5 class="modal-title mb-0">Nueva categoria</h5>
+                    <h5 class="modal-title mb-0">{% if editing_category %}Editar categoria{% else %}Nueva categoria{% endif %}</h5>
                 </div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form method="post" action="{% url 'attendees:category_create' %}" class="quick-category-form stack-form">
+                <form method="post" action="{% if editing_category %}{% url 'attendees:category_update' editing_category.id %}{% else %}{% url 'attendees:category_create' %}{% endif %}" class="quick-category-form stack-form">
                     {% csrf_token %}
                     <input type="hidden" name="return_tab" value="{{ initial_tab|default:'crear' }}" data-category-return-tab>
                     <div class="mb-3">
@@ -256,9 +256,52 @@
                         </label>
                     </div>
                     <button type="submit" class="btn btn-outline-dark w-100">
-                        <i class="fas fa-save"></i> Guardar categoria
+                        <i class="fas fa-save"></i> {% if editing_category %}Guardar cambios{% else %}Guardar categoria{% endif %}
                     </button>
+                    {% if editing_category %}
+                    <a href="{% url 'attendees:list' %}?tab={{ initial_tab|default:'crear' }}&modal=categorias" class="btn btn-link w-100 text-decoration-none">
+                        Cancelar edicion
+                    </a>
+                    {% endif %}
                 </form>
+
+                <div class="table-responsive mt-4">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Categoria</th>
+                                <th>Consumiciones</th>
+                                <th>Precio</th>
+                                <th>Estado</th>
+                                <th class="text-end">Accion</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for category in branch_categories %}
+                            <tr>
+                                <td><strong>{{ category.name }}</strong></td>
+                                <td data-number="{{ category.included_consumptions|default:'0' }}">{{ category.included_consumptions|default:"0" }}</td>
+                                <td data-number="{{ category.price|default:'0' }}" data-format="currency">$ {{ category.price|default:"0" }}</td>
+                                <td>
+                                    <span class="badge {% if category.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                        {% if category.is_active %}Activa{% else %}Inactiva{% endif %}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <a
+                                        href="{% url 'attendees:list' %}?tab={{ initial_tab|default:'crear' }}&modal=categorias&edit_category={{ category.id }}"
+                                        class="btn btn-outline-dark btn-sm"
+                                    >
+                                        Editar
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5">No hay categorias configuradas todavia.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

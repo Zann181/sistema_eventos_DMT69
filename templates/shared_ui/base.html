@@ -31,6 +31,15 @@
                     </div>
                     <h1>{{ sidebar_title }}</h1>
                 </div>
+                <button
+                    class="btn btn-outline-dark topbar-menu-toggle sidebar-close-toggle"
+                    type="button"
+                    data-sidebar-toggle
+                    aria-label="Cerrar menu"
+                    aria-expanded="false"
+                >
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
 
             {% if can_switch_event_context %}

@@ -172,14 +172,19 @@
                             {{ product_form.name.errors }}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">{{ product_form.price.label }}</label>
-                            {{ product_form.price }}
-                            {{ product_form.price.errors }}
-                        </div>
-                        <div class="col-md-6">
                             <label class="form-label">{{ product_form.image.label }}</label>
                             {{ product_form.image }}
                             {{ product_form.image.errors }}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">{{ product_form.description.label }}</label>
+                            {{ product_form.description }}
+                            {{ product_form.description.errors }}
+                        </div>
+                        <div class="col-12">
+                            <div class="form-control-plaintext text-muted">
+                                El precio se define por evento en la configuracion.
+                            </div>
                         </div>
                         <div class="col-12">
                             <div class="form-check">
@@ -220,7 +225,6 @@
                                 <tr>
                                     <th>Habilitado</th>
                                     <th>Producto</th>
-                                    <th>Precio base</th>
                                     <th>Precio del evento</th>
                                     {% if can_manage_branch_configuration %}
                                     <th class="text-end">Acciones</th>
@@ -246,8 +250,10 @@
                                         <label for="event-product-enabled-{{ row.product.id }}" class="mb-0">
                                             <strong>{{ row.product.name }}</strong>
                                         </label>
+                                        {% if row.product.description %}
+                                        <div><small class="text-muted">{{ row.product.description }}</small></div>
+                                        {% endif %}
                                     </td>
-                                    <td data-number="{{ row.product.price }}" data-format="currency">$ {{ row.product.price }}</td>
                                     <td>
                                         <input
                                             type="text"
@@ -257,7 +263,7 @@
                                             inputmode="decimal"
                                             data-thousands="true"
                                             data-decimals="0"
-                                            placeholder="Usar precio base"
+                                            placeholder="Obligatorio para habilitar"
                                         >
                                     </td>
                                     {% if can_manage_branch_configuration %}
@@ -269,13 +275,13 @@
                                                 data-edit-product-button
                                                 data-product-update-url="{% url 'sales:product_update' row.product.id %}"
                                                 data-product-name="{{ row.product.name }}"
-                                                data-product-price="{{ row.product.price|floatformat:0 }}"
+                                                data-product-description="{{ row.product.description }}"
                                                 data-product-active="{% if row.product.is_active %}true{% else %}false{% endif %}"
                                                 data-product-image="{% if row.product.image %}{{ row.product.image.url }}{% endif %}"
                                             >
                                                 <i class="fas fa-image"></i> Editar
                                             </button>
-                                            <form method="post" action="{% url 'sales:product_delete' row.product.id %}" onsubmit="return confirm('Eliminar este producto de barra? Si ya tiene ventas, se retirara sin borrar el historial.');">
+                                            <form method="post" action="{% url 'sales:product_delete' row.product.id %}" onsubmit="return confirm('Eliminar este producto global? Si ya tiene ventas, se retirara sin borrar el historial.');">
                                                 {% csrf_token %}
                                                 <button type="submit" class="btn btn-outline-danger btn-sm">
                                                     <i class="fas fa-trash"></i> Eliminar
@@ -286,7 +292,7 @@
                                     {% endif %}
                                 </tr>
                                 {% empty %}
-                                <tr><td colspan="{% if can_manage_branch_configuration %}5{% else %}4{% endif %}">No hay productos disponibles para configurar.</td></tr>
+                                <tr><td colspan="{% if can_manage_branch_configuration %}4{% else %}3{% endif %}">No hay productos disponibles para configurar.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -328,20 +334,17 @@
                                     <input type="text" name="name" id="sales-product-edit-name" class="form-control">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label" for="sales-product-edit-price">{{ product_form.price.label }}</label>
-                                    <input
-                                        type="text"
-                                        name="price"
-                                        id="sales-product-edit-price"
-                                        class="form-control"
-                                        inputmode="decimal"
-                                        data-thousands="true"
-                                        data-decimals="0"
-                                    >
-                                </div>
-                                <div class="col-12">
                                     <label class="form-label" for="sales-product-edit-image">{{ product_form.image.label }}</label>
                                     <input type="file" name="image" id="sales-product-edit-image" class="form-control" accept="image/*">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="sales-product-edit-description">{{ product_form.description.label }}</label>
+                                    <textarea name="description" id="sales-product-edit-description" class="form-control" rows="3"></textarea>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-control-plaintext text-muted">
+                                        El precio se configura por evento desde este modulo.
+                                    </div>
                                 </div>
                                 <div class="col-12">
                                     <div class="form-check">

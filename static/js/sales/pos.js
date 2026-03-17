@@ -348,10 +348,21 @@ const bindSaleSubmit = () => {
 
 const bindActionModal = (action, modalId) => {
   const actionValue = salesShell?.dataset.initialAction || new URLSearchParams(window.location.search).get("action");
-  if (actionValue === action) {
-    bootstrap.Modal.getOrCreateInstance(document.getElementById(modalId)).show();
+  const modalElement = document.getElementById(modalId);
+  if (!modalElement) {
+    if (actionValue === action) {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("action") === action) {
+        url.searchParams.delete("action");
+        window.history.replaceState({}, "", url);
+      }
+    }
+    return;
   }
-  document.getElementById(modalId)?.addEventListener("hidden.bs.modal", () => {
+  if (actionValue === action) {
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+  }
+  modalElement.addEventListener("hidden.bs.modal", () => {
     const url = new URL(window.location.href);
     if (url.searchParams.get("action") === action) {
       url.searchParams.delete("action");
@@ -366,7 +377,7 @@ const bindProductEditModal = () => {
   if (!modalElement || !form) return;
 
   const nameInput = form.querySelector("#sales-product-edit-name");
-  const priceInput = form.querySelector("#sales-product-edit-price");
+  const descriptionInput = form.querySelector("#sales-product-edit-description");
   const imageInput = form.querySelector("#sales-product-edit-image");
   const activeInput = form.querySelector("#sales-product-edit-active");
   const previewShell = form.querySelector("[data-product-edit-preview-shell]");
@@ -378,9 +389,8 @@ const bindProductEditModal = () => {
       if (nameInput) {
         nameInput.value = button.dataset.productName || "";
       }
-      if (priceInput) {
-        priceInput.value = formatCurrency(parseNumber(button.dataset.productPrice || 0));
-        priceInput.dispatchEvent(new Event("input", { bubbles: true }));
+      if (descriptionInput) {
+        descriptionInput.value = button.dataset.productDescription || "";
       }
       if (activeInput) {
         activeInput.checked = button.dataset.productActive === "true";

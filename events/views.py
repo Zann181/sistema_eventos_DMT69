@@ -8,6 +8,7 @@ from events.forms import EventForm
 from events.models import Event
 from identity.application import get_user_events_for_branch, user_can_manage_branch, user_can_manage_events
 from media_assets.application import resolve_field_file
+from sales.application import ensure_event_product_defaults
 from ticketing.application import build_qr_preview_data_uri, build_qr_preview_event
 
 
@@ -63,6 +64,7 @@ def event_create(request):
         event = form.save(commit=False)
         event.branch = branch
         event.save()
+        ensure_event_product_defaults(branch=branch, event=event, user=request.user)
         messages.success(request, f"Evento {event.name} creado.")
         return redirect("events:update", event_id=event.id)
 

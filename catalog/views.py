@@ -10,14 +10,11 @@ from identity.application import require_branch_admin, user_can_access_catalog
 @login_required
 def product_list(request):
     branch = request.current_branch
-    if not branch:
-        messages.error(request, "Selecciona una sucursal.")
-        return redirect("shared_ui:dashboard")
     if not user_can_access_catalog(request.user, branch, request.current_event):
         messages.error(request, "No tienes permisos para acceder al catalogo.")
         return redirect("shared_ui:dashboard")
 
-    products = Product.objects.filter(branch=branch).order_by("name")
+    products = Product.objects.order_by("name")
     form = ProductForm()
     return render(request, "catalog/list.html", {"products": products, "form": form, "branch": branch})
 
@@ -34,7 +31,7 @@ def product_create(request):
         product.branch = branch
         product.created_by = request.user
         product.save()
-        messages.success(request, f"Producto {product.name} creado.")
+        messages.success(request, f"Producto global {product.name} creado.")
         return redirect("catalog:list")
 
     return render(request, "catalog/form.html", {"form": form, "branch": branch, "title": "Nuevo producto"})

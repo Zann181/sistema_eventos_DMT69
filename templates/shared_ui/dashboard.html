@@ -437,6 +437,8 @@
                     <thead>
                         <tr>
                             <th>Hora</th>
+                            <th>Usuario</th>
+                            <th>Rol</th>
                             <th>Modulo</th>
                             <th>Tipo</th>
                             <th>Detalle</th>
@@ -447,13 +449,52 @@
                         {% for movement in dashboard_summary.recent_cash_movements %}
                         <tr>
                             <td>{{ movement.created_at|date:"d/m H:i" }}</td>
+                            <td>{{ movement.created_by.username|default:"Usuario eliminado" }}</td>
+                            <td>{{ movement.get_created_role_display|default:"Sin rol" }}</td>
                             <td>{{ movement.get_module_display }}</td>
                             <td>{{ movement.get_movement_type_display }}</td>
                             <td>{{ movement.description|default:"Sin detalle" }}</td>
                             <td data-number="{{ movement.total_amount }}" data-format="currency">$ {{ movement.total_amount }}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="5">Aun no hay movimientos de caja para este evento.</td></tr>
+                        <tr><td colspan="7">Aun no hay movimientos de caja para este evento.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel-card dashboard-table">
+            <div class="panel-header">
+                <div>
+                    <span class="eyebrow">Reporte operativo</span>
+                    <h4>Gastos y vaciados por operador</h4>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Usuario</th>
+                            <th>Rol</th>
+                            <th>Modulo</th>
+                            <th>Tipo</th>
+                            <th>Movimientos</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in dashboard_summary.movement_breakdown %}
+                        <tr>
+                            <td>{{ row.created_by_username }}</td>
+                            <td>{{ row.created_role_label }}</td>
+                            <td>{{ row.module_label }}</td>
+                            <td>{{ row.movement_type_label }}</td>
+                            <td data-number="{{ row.count|default:'0' }}">{{ row.count|default:"0" }}</td>
+                            <td data-number="{{ row.total|default:'0' }}" data-format="currency">$ {{ row.total|default:"0" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6">Aun no hay gastos ni vaciados registrados.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

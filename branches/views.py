@@ -103,7 +103,8 @@ def branch_update(request, slug):
         manageable_events=manageable_events,
         manager_can_assign_admin=manager_can_assign_admin,
     )
-    category_form = BranchCategoryForm(branch=branch)
+    editing_category = branch.categories.filter(pk=request.GET.get("edit_category")).first() if request.GET.get("edit_category") else None
+    category_form = BranchCategoryForm(branch=branch, instance=editing_category)
 
     if request.method == "POST" and form_type == "general":
         if not user_can_manage_branch(request.user, branch):
@@ -143,10 +144,12 @@ def branch_update(request, slug):
             messages.error(request, "No tienes permisos para administrar categorias.")
             return redirect("shared_ui:dashboard")
         active_tab = "categories"
-        category_form = BranchCategoryForm(request.POST, branch=branch)
+        editing_category = branch.categories.filter(pk=request.POST.get("category_id")).first() if request.POST.get("category_id") else None
+        category_form = BranchCategoryForm(request.POST, branch=branch, instance=editing_category)
         if category_form.is_valid():
             category = category_form.save()
-            messages.success(request, f"Categoria {category.name} guardada para {branch.name}.")
+            action_label = "actualizada" if editing_category else "guardada"
+            messages.success(request, f"Categoria {category.name} {action_label} para {branch.name}.")
             return redirect(f"{redirect('branches:update', slug=branch.slug).url}?tab=categories")
 
     assignments_queryset = UserEventAssignment.objects.filter(branch=branch)
@@ -217,6 +220,7 @@ def branch_update(request, slug):
             "editing_staff_user": editing_user,
             "editing_staff_events": editing_user_events,
             "branch_categories": categories,
+            "editing_category": editing_category,
             "title": f"Editar {branch.name}",
             "branch": branch,
             "active_tab": active_tab,

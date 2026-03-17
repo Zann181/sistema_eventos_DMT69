@@ -1,7 +1,8 @@
+from decimal import Decimal
+import uuid
+
 from django.conf import settings
 from django.db import models
-import uuid
-from decimal import Decimal
 
 
 class EventProduct(models.Model):
@@ -22,18 +23,11 @@ class EventProduct(models.Model):
     def normalized_event_price(self):
         if self.event_price is None:
             return None
-        price = Decimal(self.event_price)
-        base_price = Decimal(self.product.price or 0)
-        if base_price <= 0:
-            return price
-        while price >= (base_price * Decimal("10")) and price == price.to_integral_value():
-            price = price / Decimal("10")
-        return price
+        return Decimal(self.event_price)
 
     @property
     def effective_price(self):
-        normalized = self.normalized_event_price()
-        return normalized if normalized is not None else self.product.price
+        return self.normalized_event_price()
 
     def __str__(self):
         return f"{self.event.name} - {self.product.name}"
@@ -77,10 +71,29 @@ class CashMovement(models.Model):
         (TYPE_EXPENSE, "Gasto"),
         (TYPE_CASH_DROP, "Vaciar caja"),
     ]
+    ROLE_GLOBAL_ADMIN = "admin"
+    ROLE_BRANCH = "sucursal"
+    ROLE_EVENT_ADMIN = "evento"
+    ROLE_ENTRANCE = "entrada"
+    ROLE_BAR = "barra"
+    CREATED_ROLE_CHOICES = [
+        (ROLE_GLOBAL_ADMIN, "Administrador global"),
+        (ROLE_BRANCH, "Administrador de sucursal"),
+        (ROLE_EVENT_ADMIN, "Administrador de eventos"),
+        (ROLE_ENTRANCE, "Personal de entrada"),
+        (ROLE_BAR, "Personal de barra"),
+    ]
 
     branch = models.ForeignKey("branches.Branch", on_delete=models.CASCADE, related_name="cash_movements")
     event = models.ForeignKey("events.Event", on_delete=models.CASCADE, related_name="cash_movements")
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cash_movements")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cash_movements",
+    )
+    created_role = models.CharField(max_length=20, choices=CREATED_ROLE_CHOICES, blank=True)
     module = models.CharField(max_length=20, choices=MODULE_CHOICES)
     movement_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     description = models.CharField(max_length=255, blank=True)

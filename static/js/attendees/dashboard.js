@@ -352,8 +352,11 @@
     window.location.reload();
   }
 
-  async function deleteAttendee(cc) {
-    if (!window.confirm("Eliminar este asistente permanentemente?")) {
+  async function deleteAttendee(cc, isCheckedIn = false) {
+    const confirmationMessage = isCheckedIn
+      ? "Este asistente ya ingreso. Solo administradores pueden borrarlo. Deseas eliminarlo permanentemente?"
+      : "Eliminar este asistente permanentemente?";
+    if (!window.confirm(confirmationMessage)) {
       return;
     }
     const { payload } = await fetchJson(config.deleteUrl, {

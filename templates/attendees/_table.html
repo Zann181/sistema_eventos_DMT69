@@ -59,6 +59,10 @@
                         <button class="btn btn-danger" type="button" onclick="window.eliminarAsistente('{{ attendee.cc }}')">
                             <i class="fas fa-trash"></i> Eliminar
                         </button>
+                        {% elif can_manage_events_configuration %}
+                        <button class="btn btn-outline-danger" type="button" onclick="window.eliminarAsistente('{{ attendee.cc }}', true)">
+                            <i class="fas fa-trash"></i> Eliminar ingreso
+                        </button>
                         {% endif %}
                     </div>
                 </td>

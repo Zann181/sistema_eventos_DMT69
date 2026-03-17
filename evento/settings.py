@@ -4,13 +4,30 @@ import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+PYTHONANYWHERE_USERNAME = os.environ.get("PYTHONANYWHERE_USERNAME", "MotasEvent")
+PYTHONANYWHERE_DOMAIN = os.environ.get("PYTHONANYWHERE_DOMAIN", "motasevent.pythonanywhere.com")
+
+
+def _get_bool_env(name, default):
+    return os.environ.get(name, str(default)).lower() == "true"
+
+
+def _is_pythonanywhere():
+    base_dir_str = BASE_DIR.as_posix()
+    return (
+        PYTHONANYWHERE_DOMAIN.endswith(".pythonanywhere.com")
+        and base_dir_str.startswith(f"/home/{PYTHONANYWHERE_USERNAME}/")
+    )
+
+
+IS_PYTHONANYWHERE = _is_pythonanywhere()
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
     "django-insecure-w!+v6uela@#b+$)8^@95n1f1v&8b(*txblina)i2rqorgkf()w",
 )
 
-DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
+DEBUG = _get_bool_env("DJANGO_DEBUG", not IS_PYTHONANYWHERE)
 
 
 def _detect_local_ip():
@@ -30,6 +47,7 @@ def _build_allowed_hosts():
         "localhost",
         _detect_local_ip(),
         ".ngrok-free.app",
+        PYTHONANYWHERE_DOMAIN,
     }
     env_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "")
     hosts.update(host.strip() for host in env_hosts.split(",") if host.strip())
@@ -44,6 +62,7 @@ ALLOWED_HOSTS = _build_allowed_hosts()
 def _build_csrf_trusted_origins():
     local_ip = _detect_local_ip()
     origins = {
+        f"https://{PYTHONANYWHERE_DOMAIN}",
         "https://*.ngrok-free.app",
         "https://*.ngrok.io",
         "http://127.0.0.1:8000",
@@ -108,24 +127,66 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "evento.wsgi.application"
 
-if "test" in sys.argv:
-    DATABASES = {
+
+def _build_database_settings():
+    if "test" in sys.argv:
+        return {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": BASE_DIR / "test_db.sqlite3",
+            }
+        }
+
+    has_explicit_db_env = any(
+        os.environ.get(key)
+        for key in ("DB_ENGINE", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT")
+    )
+
+    if IS_PYTHONANYWHERE:
+        return {
+            "default": {
+                "ENGINE": os.environ.get("DB_ENGINE", "django.db.backends.mysql"),
+                "NAME": os.environ.get("DB_NAME", "MotasEvent$evento_db"),
+                "USER": os.environ.get("DB_USER", "MotasEvent"),
+                "PASSWORD": os.environ.get("DB_PASSWORD", "Motas696@"),
+                "HOST": os.environ.get(
+                    "DB_HOST",
+                    "MotasEvent.mysql.pythonanywhere-services.com",
+                ),
+                "PORT": os.environ.get("DB_PORT", "3306"),
+            }
+        }
+
+    if has_explicit_db_env:
+        db_engine = os.environ.get("DB_ENGINE", "django.db.backends.mysql")
+        if db_engine == "django.db.backends.sqlite3":
+            return {
+                "default": {
+                    "ENGINE": db_engine,
+                    "NAME": os.environ.get("DB_NAME", str(BASE_DIR / "db.sqlite3")),
+                }
+            }
+
+        return {
+            "default": {
+                "ENGINE": db_engine,
+                "NAME": os.environ.get("DB_NAME", "evento_local"),
+                "USER": os.environ.get("DB_USER", "root"),
+                "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+                "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
+                "PORT": os.environ.get("DB_PORT", "3306"),
+            }
+        }
+
+    return {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "test_db.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
         }
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": os.environ.get("DB_ENGINE", "django.db.backends.mysql"),
-            "NAME": os.environ.get("DB_NAME", "evento_db_clean_20260316"),
-            "USER": os.environ.get("DB_USER", "root"),
-            "PASSWORD": os.environ.get("DB_PASSWORD", "12345678"),
-            "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
-            "PORT": os.environ.get("DB_PORT", "3306"),
-        }
-    }
+
+
+DATABASES = _build_database_settings()
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -156,9 +217,10 @@ CSRF_TRUSTED_ORIGINS = _build_csrf_trusted_origins()
 CSRF_FAILURE_VIEW = "shared_ui.views.csrf_failure"
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = False
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SECURE = False
+USE_HTTPS = _get_bool_env("DJANGO_USE_HTTPS", IS_PYTHONANYWHERE)
+SECURE_SSL_REDIRECT = _get_bool_env("DJANGO_SECURE_SSL_REDIRECT", USE_HTTPS and not DEBUG)
+SESSION_COOKIE_SECURE = USE_HTTPS
+CSRF_COOKIE_SECURE = USE_HTTPS
 
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")

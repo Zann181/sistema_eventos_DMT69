@@ -133,6 +133,7 @@ def build_empty_dashboard_analytics():
         "income_chart": empty_chart,
         "outflow_chart": empty_chart,
         "recent_cash_movements": [],
+        "movement_breakdown": [],
     }
     return {
         "dashboard_summary": combined,
@@ -336,13 +337,13 @@ def build_bar_analytics(branch, event):
     cash_drop_total = _sum_or_zero(bar_movements.filter(movement_type=CashMovement.TYPE_CASH_DROP), "total_amount")
     net_operating = income_total - expense_total
     cash_balance = income_total - expense_total - cash_drop_total
-    total_products = Product.objects.filter(branch=branch, is_active=True).count()
+    total_products = Product.objects.filter(is_active=True).count()
     enabled_products = Product.objects.filter(
-        branch=branch,
         is_active=True,
         event_settings__branch=branch,
         event_settings__event=event,
         event_settings__is_enabled=True,
+        event_settings__event_price__isnull=False,
     ).distinct().count()
 
     product_rows = build_bar_product_rows(branch=branch, event=event)
@@ -463,6 +464,33 @@ def build_combined_analytics(branch, event, entrance_analytics, bar_analytics):
         .select_related("created_by")
         .order_by("-created_at")[:12]
     )
+    movement_breakdown_rows = (
+        CashMovement.objects.filter(
+            branch=branch,
+            event=event,
+            movement_type__in=[CashMovement.TYPE_EXPENSE, CashMovement.TYPE_CASH_DROP],
+        )
+        .values("module", "movement_type", "created_role", "created_by__username")
+        .annotate(total=Sum("total_amount"), count=Count("id"))
+        .order_by("module", "movement_type", "created_by__username", "created_role")
+    )
+    role_labels = dict(CashMovement.CREATED_ROLE_CHOICES)
+    type_labels = dict(CashMovement.TYPE_CHOICES)
+    module_labels = dict(CashMovement.MODULE_CHOICES)
+    movement_breakdown = [
+        {
+            "module": row["module"],
+            "module_label": module_labels.get(row["module"], row["module"]),
+            "movement_type": row["movement_type"],
+            "movement_type_label": type_labels.get(row["movement_type"], row["movement_type"]),
+            "created_role": row["created_role"] or "",
+            "created_role_label": role_labels.get(row["created_role"], "Sin rol"),
+            "created_by_username": row["created_by__username"] or "Usuario eliminado",
+            "count": row["count"] or 0,
+            "total": row["total"] or Decimal("0"),
+        }
+        for row in movement_breakdown_rows
+    ]
 
     return {
         "metrics": {
@@ -473,6 +501,7 @@ def build_combined_analytics(branch, event, entrance_analytics, bar_analytics):
             "cash_balance": cash_balance,
         },
         "recent_cash_movements": recent_cash_movements,
+        "movement_breakdown": movement_breakdown,
         "income_chart": build_pie_chart(
             [
                 {

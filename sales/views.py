@@ -62,8 +62,13 @@ def _build_cash_snapshot(branch, event):
     )
     sales_total = sales_stats["total_amount"] or Decimal("0.00")
 
-    enabled_products = EventProduct.objects.filter(branch=branch, event=event, is_enabled=True).count()
-    total_products = Product.objects.filter(branch=branch, is_active=True).count()
+    enabled_products = EventProduct.objects.filter(
+        branch=branch,
+        event=event,
+        is_enabled=True,
+        event_price__isnull=False,
+    ).count()
+    total_products = Product.objects.filter(is_active=True).count()
 
     return {
         "sales_total": sales_total,
@@ -264,13 +269,13 @@ def product_create(request):
         event=event,
         product=product,
         defaults={
-            "is_enabled": True,
-            "event_price": product.price,
+            "is_enabled": False,
+            "event_price": None,
             "updated_by": request.user,
         },
     )
-    messages.success(request, f"Producto {product.name} agregado a la barra.")
-    return redirect("sales:pos")
+    messages.success(request, f"Producto global {product.name} creado. Configura el precio del evento para habilitarlo.")
+    return redirect(f"{reverse('sales:pos')}?action=evento-productos")
 
 
 @require_POST
@@ -284,7 +289,7 @@ def product_update(request, product_id):
         messages.error(request, "Selecciona un evento.")
         return redirect("shared_ui:dashboard")
 
-    product = Product.objects.filter(branch=branch, pk=product_id).first()
+    product = Product.objects.filter(pk=product_id).first()
     if product is None:
         raise Http404("El producto no existe.")
 
@@ -299,7 +304,7 @@ def product_update(request, product_id):
         )
 
     updated_product = form.save()
-    messages.success(request, f"Producto {updated_product.name} actualizado.")
+    messages.success(request, f"Producto global {updated_product.name} actualizado.")
     return redirect(f"{reverse('sales:pos')}?action=evento-productos")
 
 
@@ -314,7 +319,7 @@ def product_delete(request, product_id):
         messages.error(request, "Selecciona un evento.")
         return redirect("shared_ui:dashboard")
 
-    product = Product.objects.filter(branch=branch, pk=product_id).first()
+    product = Product.objects.filter(pk=product_id).first()
     if product is None:
         raise Http404("El producto no existe.")
 
@@ -322,10 +327,10 @@ def product_delete(request, product_id):
     if result["mode"] == "retired":
         messages.success(
             request,
-            f"Producto {product.name} retirado. Se desactivo para conservar el historial de ventas.",
+            f"Producto {product.name} retirado globalmente. Se desactivo para conservar el historial.",
         )
     else:
-        messages.success(request, f"Producto {product.name} eliminado.")
+        messages.success(request, f"Producto global {product.name} eliminado.")
     return redirect(f"{reverse('sales:pos')}?action=evento-productos")
 
 
@@ -359,7 +364,7 @@ def event_products_update(request):
         return redirect("shared_ui:dashboard")
 
     try:
-        rows = parse_event_product_rows(request.POST, branch=branch)
+        rows = parse_event_product_rows(request.POST)
         updated = sync_event_products(branch=branch, event=event, user=request.user, rows=rows)
     except ValueError as exc:
         messages.error(request, str(exc))

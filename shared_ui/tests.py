@@ -220,6 +220,21 @@ class ModularArchitectureTests(TestCase):
         flyer_response = self.client.get(reverse("attendees:whatsapp_flyer_file", args=[self.attendee.qr_code]))
         self.assertIn(flyer_response.status_code, {200, 404})
 
+    def test_whatsapp_flyer_file_uses_webp_response_when_flyer_exists(self):
+        self.event.flyer = make_test_image("flyer-share.png", color="#00aa55")
+        self.event.save()
+
+        self.assertTrue(self.client.login(username="operador", password="12345678"))
+        session = self.client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = self.client.get(reverse("attendees:whatsapp_flyer_file", args=[self.attendee.qr_code]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/webp")
+
     def test_process_sale_uses_event_price_without_touching_product_inventory(self):
         product = Product.objects.create(
             branch=self.branch,
@@ -446,7 +461,7 @@ class ModularArchitectureTests(TestCase):
         response = client.get(reverse("sales:pos"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Texto que no debe verse en caja")
+        self.assertContains(response, "Texto que no debe verse en caja")
         self.assertNotContains(response, "Sin descripcion")
 
     def test_sales_event_products_modal_shows_actions_and_integer_price_input(self):
@@ -481,7 +496,7 @@ class ModularArchitectureTests(TestCase):
         self.assertContains(response, 'value="15000"')
         self.assertNotContains(response, 'value="15000.00"')
 
-    def test_existing_global_products_appear_in_pos_without_manual_event_config(self):
+    def test_new_global_products_require_event_configuration_before_sale(self):
         Product.objects.create(
             branch=self.branch,
             name="Producto legado",
@@ -502,14 +517,69 @@ class ModularArchitectureTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Producto legado")
+        self.assertEqual(list(response.context["sale_products"]), [])
         self.assertTrue(
             EventProduct.objects.filter(
                 branch=self.branch,
                 event=self.event,
                 product__name="Producto legado",
-                is_enabled=True,
+                is_enabled=False,
+                event_price__isnull=True,
             ).exists()
         )
+
+    def test_sales_product_create_redirects_to_event_configuration_without_price(self):
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.post(
+            reverse("sales:product_create"),
+            {
+                "name": "Nuevo global",
+                "description": "Producto sin precio global",
+                "is_active": "on",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        product = Product.objects.get(name="Nuevo global")
+        event_product = EventProduct.objects.get(branch=self.branch, event=self.event, product=product)
+        self.assertEqual(product.price, Decimal("0"))
+        self.assertFalse(event_product.is_enabled)
+        self.assertIsNone(event_product.event_price)
+        self.assertContains(response, "Configura el precio del evento para habilitarlo.")
+
+    def test_bar_role_can_open_pos_with_products_action_without_modal_rendered(self):
+        bar_user = User.objects.create_user(username="barra-action", password="12345678@")
+        UserBranchMembership.objects.create(
+            user=bar_user,
+            branch=self.branch,
+            role=UserBranchMembership.ROLE_BAR,
+            is_active=True,
+        )
+        UserEventAssignment.objects.create(
+            user=bar_user,
+            branch=self.branch,
+            event=self.event,
+            role=UserBranchMembership.ROLE_BAR,
+            is_active=True,
+        )
+        client = Client()
+        self.assertTrue(client.login(username="barra-action", password="12345678@"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.get(f"{reverse('sales:pos')}?action=productos")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="salesProductModal"', html=False)
 
     def test_sales_product_delete_keeps_history_by_retiring_product(self):
         product = Product.objects.create(
@@ -1079,6 +1149,71 @@ class ModularArchitectureTests(TestCase):
         self.assertContains(response, 'data-initial-tab="crear"', html=False, status_code=400)
         self.assertContains(response, 'data-open-modal="categorias"', html=False, status_code=400)
 
+    def test_category_update_preserves_existing_attendee_values(self):
+        attendee = Attendee.objects.create(
+            branch=self.branch,
+            event=self.event,
+            category=self.category,
+            name="Categoria fija",
+            cc="CAT-1",
+            phone="300",
+            email="cat@test.com",
+            paid_amount=Decimal("50000"),
+            included_balance=2,
+            created_by=self.user,
+        )
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.post(
+            reverse("attendees:category_update", args=[self.category.id]),
+            {
+                "name": "VIP editada",
+                "included_consumptions": "5",
+                "price": "65000",
+                "description": "Categoria actualizada",
+                "is_active": "on",
+                "return_tab": "crear",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.category.refresh_from_db()
+        attendee.refresh_from_db()
+        self.assertEqual(self.category.name, "VIP editada")
+        self.assertEqual(self.category.price, Decimal("65000"))
+        self.assertEqual(attendee.paid_amount, Decimal("50000"))
+        self.assertEqual(attendee.included_balance, 2)
+
+    def test_category_update_errors_keep_modal_open(self):
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.post(
+            reverse("attendees:category_update", args=[self.category.id]),
+            {
+                "name": "",
+                "included_consumptions": "1",
+                "price": "10000",
+                "description": "",
+                "is_active": "on",
+                "return_tab": "crear",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "Editar categoria", status_code=400)
+        self.assertContains(response, 'data-open-modal="categorias"', html=False, status_code=400)
+
     def test_dashboard_shows_access_analytics_only_there(self):
         client = Client()
         self.assertTrue(client.login(username="operador", password="12345678"))
@@ -1097,6 +1232,43 @@ class ModularArchitectureTests(TestCase):
         self.assertContains(response, "Ventas por producto")
         self.assertContains(response, "dashboard-pie-chart")
         self.assertContains(response, "dashboard-donut-detail")
+
+    def test_cash_movements_capture_role_snapshot_and_dashboard_breakdown(self):
+        expense = create_cash_movement(
+            branch=self.branch,
+            event=self.event,
+            user=self.user,
+            module=CashMovement.MODULE_BAR,
+            movement_type=CashMovement.TYPE_EXPENSE,
+            total_amount=Decimal("15000"),
+            description="Hielo",
+            payments=[{"method": "efectivo", "amount": Decimal("15000")}],
+        )
+        create_cash_movement(
+            branch=self.branch,
+            event=self.event,
+            user=self.user,
+            module=CashMovement.MODULE_ENTRANCE,
+            movement_type=CashMovement.TYPE_CASH_DROP,
+            total_amount=Decimal("30000"),
+            description="Retiro puerta",
+        )
+
+        self.assertEqual(expense.created_role, "admin")
+
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.get(reverse("shared_ui:dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        breakdown = response.context["dashboard_summary"]["movement_breakdown"]
+        self.assertTrue(any(row["created_role"] == "admin" and row["module"] == "barra" for row in breakdown))
+        self.assertContains(response, "Gastos y vaciados por operador")
 
     def test_dashboard_separates_manual_and_event_day_income_without_double_counting(self):
         manual_category = Category.objects.create(
@@ -1236,7 +1408,7 @@ class ModularArchitectureTests(TestCase):
         self.assertIn("Efectivo", payment_labels)
         self.assertIn("Tarjeta", payment_labels)
 
-    def test_event_product_effective_price_normalizes_extra_zeros(self):
+    def test_event_product_effective_price_uses_event_price_only(self):
         product = Product.objects.create(
             branch=self.branch,
             name="Corona normalizada",
@@ -1249,7 +1421,7 @@ class ModularArchitectureTests(TestCase):
             event=self.event,
             product=product,
             is_enabled=True,
-            event_price=Decimal("1500000"),
+            event_price=Decimal("15000"),
             updated_by=self.user,
         )
 
@@ -1356,6 +1528,69 @@ class ModularArchitectureTests(TestCase):
 
         pending.refresh_from_db()
         self.assertTrue(pending.has_checked_in)
+
+    def test_global_admin_can_delete_checked_in_attendee(self):
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.post(
+            reverse("attendees:delete"),
+            data='{"cc": "%s"}' % self.attendee.cc,
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        self.assertFalse(Attendee.objects.filter(pk=self.attendee.pk).exists())
+
+    def test_entrance_role_cannot_delete_checked_in_attendee(self):
+        checked_in_attendee = Attendee.objects.create(
+            branch=self.branch,
+            event=self.event,
+            category=self.category,
+            name="Ingreso protegido",
+            cc="556",
+            phone="313",
+            email="protegido@test.com",
+            has_checked_in=True,
+        )
+        entrance = User.objects.create_user(username="entrada-delete", password="12345678@")
+        UserBranchMembership.objects.create(
+            user=entrance,
+            branch=self.branch,
+            role=UserBranchMembership.ROLE_ENTRANCE,
+            is_active=True,
+        )
+        UserEventAssignment.objects.create(
+            user=entrance,
+            branch=self.branch,
+            event=self.event,
+            role=UserBranchMembership.ROLE_ENTRANCE,
+            is_active=True,
+        )
+        client = Client()
+        self.assertTrue(client.login(username="entrada-delete", password="12345678@"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.post(
+            reverse("attendees:delete"),
+            data='{"cc": "%s"}' % checked_in_attendee.cc,
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["message"], "No se puede eliminar un asistente que ya ingreso.")
+        self.assertTrue(Attendee.objects.filter(pk=checked_in_attendee.pk).exists())
 
     def test_attendee_create_rejects_duplicate_cc_in_same_event_with_form_error(self):
         client = Client()
@@ -1823,8 +2058,8 @@ class ModularArchitectureTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Punto de venta")
-        self.assertContains(response, "Agregar producto")
-        self.assertContains(response, "Productos del evento")
+        self.assertNotContains(response, "Agregar producto")
+        self.assertNotContains(response, "Productos del evento")
         self.assertContains(response, "Vaciar caja")
 
     def test_event_form_rejects_non_png_logo(self):

@@ -13,7 +13,7 @@ from sales.models import BarSale, BarSalePayment, CashMovement, CashMovementPaym
 
 @transaction.atomic
 def ensure_event_product_defaults(*, branch, event, user=None):
-    products = list(Product.objects.filter(branch=branch, is_active=True))
+    products = list(Product.objects.filter(is_active=True))
     existing_configs = {
         config.product_id: config
         for config in EventProduct.objects.filter(branch=branch, event=event, product__in=products)
@@ -26,8 +26,8 @@ def ensure_event_product_defaults(*, branch, event, user=None):
             branch=branch,
             event=event,
             product=product,
-            is_enabled=True,
-            event_price=product.price,
+            is_enabled=False,
+            event_price=None,
             updated_by=user,
         )
         created += 1
@@ -51,8 +51,6 @@ def process_sale(
         product = event_product.product
     if product is None:
         raise ValueError("Debes seleccionar un producto.")
-    if product.branch_id != branch.id:
-        raise ValueError("El producto no pertenece a la sucursal activa.")
     if event_product and event_product.event_id != event.id:
         raise ValueError("El producto no esta configurado para el evento activo.")
     if event_product and not event_product.is_enabled:
@@ -64,7 +62,9 @@ def process_sale(
     if attendee and use_included_balance and attendee.included_balance < quantity:
         raise ValueError("Consumos incluidos insuficientes.")
 
-    unit_price = event_product.effective_price if event_product is not None else product.price
+    unit_price = event_product.effective_price if event_product is not None else None
+    if unit_price is None:
+        raise ValueError("El producto no tiene precio configurado para este evento.")
     total = Decimal(unit_price) * Decimal(quantity)
     payments = payments or []
     if use_included_balance:
@@ -143,6 +143,7 @@ def calculate_sale_cart_total(*, branch, event, items):
             event=event,
             id__in=requested_ids,
             is_enabled=True,
+            event_price__isnull=False,
             product__is_active=True,
         )
     }
@@ -177,6 +178,7 @@ def process_sale_cart(*, branch, event, user, items, payments=None):
             event=event,
             id__in=ordered_ids,
             is_enabled=True,
+            event_price__isnull=False,
             product__is_active=True,
         )
     }
@@ -342,6 +344,15 @@ def parse_decimal(value, *, field_name="valor"):
         raise ValueError(f"El campo {field_name} no es valido.") from exc
 
 
+def _format_decimal_input(value):
+    if value is None:
+        return ""
+    normalized = Decimal(value).normalize()
+    if normalized == normalized.to_integral():
+        return str(int(normalized))
+    return format(normalized, "f")
+
+
 def extract_split_payments(post, files, *, prefix, max_rows=4):
     payments = []
     for index in range(1, max_rows + 1):
@@ -430,7 +441,7 @@ def resolve_sale_payments(post, files, *, total_amount, prefix="sale", max_rows=
 
 def build_event_product_rows(*, branch, event):
     ensure_event_product_defaults(branch=branch, event=event)
-    products = Product.objects.filter(branch=branch, is_active=True).order_by("name")
+    products = Product.objects.filter(is_active=True).order_by("name")
     configs = {
         config.product_id: config
         for config in EventProduct.objects.filter(branch=branch, event=event).select_related("product")
@@ -445,14 +456,14 @@ def build_event_product_rows(*, branch, event):
                 "config": config,
                 "is_enabled": config.is_enabled if config else False,
                 "event_price": normalized_event_price,
-                "event_price_input": "" if normalized_event_price is None else str(int(normalized_event_price)),
-                "effective_price": config.effective_price if config else product.price,
+                "event_price_input": _format_decimal_input(normalized_event_price),
+                "effective_price": config.effective_price if config else None,
             }
         )
     return rows
 
 
-def parse_event_product_rows(post, *, branch):
+def parse_event_product_rows(post):
     rows = []
     product_ids = post.getlist("event_product_ids")
     if not product_ids:
@@ -460,21 +471,23 @@ def parse_event_product_rows(post, *, branch):
 
     products = {
         str(product.id): product
-        for product in Product.objects.filter(branch=branch, pk__in=product_ids)
+        for product in Product.objects.filter(pk__in=product_ids)
     }
     for product_id in product_ids:
         product = products.get(str(product_id))
         if product is None:
             continue
         raw_price = (post.get(f"event_product_price_{product.id}") or "").strip()
+        is_enabled = post.get(f"event_product_enabled_{product.id}") == "on"
+        if is_enabled and not raw_price:
+            raise ValueError(f"Debes definir el precio del evento para {product.name}.")
         event_price = parse_decimal(raw_price, field_name=f"precio del producto {product.name}") if raw_price else None
-        if event_price is not None:
-            while event_price >= (Decimal(product.price) * Decimal("10")) and event_price == event_price.to_integral_value():
-                event_price = event_price / Decimal("10")
+        if event_price is not None and event_price <= 0:
+            raise ValueError(f"El precio del evento para {product.name} debe ser mayor a cero.")
         rows.append(
             {
                 "product": product,
-                "is_enabled": post.get(f"event_product_enabled_{product.id}") == "on",
+                "is_enabled": is_enabled,
                 "event_price": event_price,
             }
         )
@@ -489,8 +502,8 @@ def sync_event_products(*, branch, event, user, rows):
     updated = 0
     for row in rows:
         product = row["product"]
-        if product.branch_id != branch.id:
-            raise ValueError("Todos los productos deben pertenecer a la sucursal activa.")
+        if row["is_enabled"] and row["event_price"] is None:
+            raise ValueError(f"Debes definir un precio para habilitar {product.name}.")
         config, _ = EventProduct.objects.get_or_create(
             branch=branch,
             event=event,
@@ -506,21 +519,18 @@ def sync_event_products(*, branch, event, user, rows):
 
 @transaction.atomic
 def retire_product(*, branch, product, user):
-    if product.branch_id != branch.id:
-        raise ValueError("El producto no pertenece a la sucursal activa.")
-
-    has_sales = BarSale.objects.filter(branch=branch, product=product).exists()
+    has_sales = BarSale.objects.filter(product=product).exists()
     if has_sales:
         product.is_active = False
         product.save(update_fields=["is_active", "updated_at"])
-        EventProduct.objects.filter(branch=branch, product=product).update(
+        EventProduct.objects.filter(product=product).update(
             is_enabled=False,
             event_price=None,
             updated_by=user,
         )
         return {"mode": "retired"}
 
-    EventProduct.objects.filter(branch=branch, product=product).delete()
+    EventProduct.objects.filter(product=product).delete()
     product.delete()
     return {"mode": "deleted"}
 
@@ -583,10 +593,15 @@ def create_cash_movement(
         if payment_total != total_amount:
             raise ValueError("La suma de las formas de pago debe coincidir con el total.")
 
+    from identity.application import get_effective_role
+
+    created_role = get_effective_role(user, branch, event) or ""
+
     movement = CashMovement.objects.create(
         branch=branch,
         event=event,
         created_by=user,
+        created_role=created_role,
         module=module,
         movement_type=movement_type,
         description=description,
