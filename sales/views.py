@@ -242,12 +242,11 @@ def sale_create(request):
 @require_POST
 @login_required
 def product_create(request):
-    branch = require_branch_admin(request)
-    if not branch:
+    branch, event = _sales_permissions_guard(request)
+    if not branch or not event:
         return redirect("shared_ui:dashboard")
-    event = getattr(request, "current_event", None)
-    if not event:
-        messages.error(request, "Selecciona un evento.")
+    if not user_can_manage_events(request.user, branch, event):
+        messages.error(request, "No tienes permisos para agregar productos en este evento.")
         return redirect("shared_ui:dashboard")
 
     form = BarProductForm(request.POST, request.FILES)

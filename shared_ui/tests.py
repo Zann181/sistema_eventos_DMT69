@@ -554,6 +554,51 @@ class ModularArchitectureTests(TestCase):
         self.assertIsNone(event_product.event_price)
         self.assertContains(response, "Configura el precio del evento para habilitarlo.")
 
+    def test_event_admin_can_open_product_modal_and_create_product(self):
+        event_admin = User.objects.create_user(username="evento-admin-producto", password="12345678@")
+        UserBranchMembership.objects.create(
+            user=event_admin,
+            branch=self.branch,
+            role=UserBranchMembership.ROLE_EVENT_ADMIN,
+            is_active=True,
+        )
+        UserEventAssignment.objects.create(
+            user=event_admin,
+            branch=self.branch,
+            event=self.event,
+            role=UserBranchMembership.ROLE_EVENT_ADMIN,
+            is_active=True,
+        )
+        client = Client()
+        self.assertTrue(client.login(username="evento-admin-producto", password="12345678@"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        pos_response = client.get(f"{reverse('sales:pos')}?action=productos")
+
+        self.assertEqual(pos_response.status_code, 200)
+        self.assertContains(pos_response, "Agregar producto")
+        self.assertContains(pos_response, 'id="salesProductModal"', html=False)
+
+        create_response = client.post(
+            reverse("sales:product_create"),
+            {
+                "name": "Producto evento admin",
+                "description": "Creado por admin de evento",
+                "is_active": "on",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        product = Product.objects.get(name="Producto evento admin")
+        event_product = EventProduct.objects.get(branch=self.branch, event=self.event, product=product)
+        self.assertFalse(event_product.is_enabled)
+        self.assertIsNone(event_product.event_price)
+        self.assertContains(create_response, "Configura el precio del evento para habilitarlo.")
+
     def test_bar_role_can_open_pos_with_products_action_without_modal_rendered(self):
         bar_user = User.objects.create_user(username="barra-action", password="12345678@")
         UserBranchMembership.objects.create(
@@ -1828,6 +1873,8 @@ class ModularArchitectureTests(TestCase):
 
         self.assertEqual(dashboard_response.status_code, 200)
         self.assertContains(dashboard_response, "Eventos")
+        self.assertContains(dashboard_response, "Agregar producto")
+        self.assertContains(dashboard_response, "Productos del evento")
         self.assertNotContains(dashboard_response, "Sucursales")
         self.assertContains(dashboard_response, "Personal")
 

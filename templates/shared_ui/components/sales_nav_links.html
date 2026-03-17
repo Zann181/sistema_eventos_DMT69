@@ -1,6 +1,6 @@
 <a href="{% url 'sales:pos' %}" class="nav-link"><i class="fa-solid fa-martini-glass-citrus"></i><span>Punto de venta</span></a>
 <a href="{% url 'sales:list' %}" class="nav-link"><i class="fa-solid fa-table-list"></i><span>Ventas</span></a>
-{% if can_manage_branch_configuration %}
+{% if can_manage_events_configuration %}
 <a href="{% url 'sales:pos' %}?action=productos" class="nav-link"><i class="fa-solid fa-plus"></i><span>Agregar producto</span></a>
 {% endif %}
 {% if can_manage_events_configuration %}

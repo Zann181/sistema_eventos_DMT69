@@ -17,7 +17,7 @@
             <a href="{% url 'sales:list' %}" class="btn btn-dark">
                 <i class="fas fa-table-list"></i> Ver ventas
             </a>
-            {% if can_manage_branch_configuration %}
+            {% if can_manage_events_configuration %}
             <a href="{% url 'sales:pos' %}?action=productos" class="btn btn-outline-dark">
                 <i class="fas fa-plus"></i> Agregar producto
             </a>
@@ -151,7 +151,7 @@
     </aside>
 </form>
 
-{% if can_manage_branch_configuration %}
+{% if can_manage_events_configuration %}
 <div class="modal fade" id="salesProductModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content neon-modal">
