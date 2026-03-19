@@ -123,53 +123,123 @@
         <div class="panel-header">
             <div>
                 <span class="eyebrow">Productos</span>
-                <h4>Catalogo global</h4>
+                <h4>CRUD de productos</h4>
                 {% if event %}
-                <p class="metric-helper mb-0">Vista global del catalogo con el estado actual para {{ event.name }}.</p>
+                <p class="metric-helper mb-0">Haz clic sobre un producto para editarlo. El listado muestra el estado actual para {{ event.name }}.</p>
                 {% endif %}
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 {% if can_manage_categories %}
                 <a href="#categorias-sucursal" class="btn btn-outline-dark">CRUD categorias</a>
                 {% endif %}
-                <a href="{% url 'catalog:create' %}" class="btn btn-dark">Nuevo producto</a>
+                {% if editing_product %}
+                <a href="{% url 'catalog:list' %}#productos-globales" class="btn btn-outline-dark">Nuevo producto</a>
+                {% endif %}
                 {% if can_configure_event_products %}
                 <a href="{% url 'sales:pos' %}?action=evento-productos" class="btn btn-outline-dark">Editar por evento</a>
                 {% endif %}
             </div>
         </div>
-        <div class="catalog-grid">
-            {% for row in product_rows %}
-            <article class="product-card">
-                {% if row.product.image %}
-                <img src="{{ row.product.image.url }}" alt="{{ row.product.name }}">
-                {% endif %}
-                <div>
-                    <h5>{{ row.product.name }}</h5>
-                    <p>{{ row.product.description|default:"Sin descripcion" }}</p>
-                    <div class="d-flex gap-2 flex-wrap">
-                        <span>{% if row.product.is_active %}Activo{% else %}Inactivo{% endif %}</span>
-                        {% if event %}
-                        <span class="badge {% if row.is_enabled %}text-bg-success{% else %}text-bg-secondary{% endif %}">
-                            {% if row.is_enabled %}Habilitado en evento{% else %}No habilitado{% endif %}
-                        </span>
+        <div class="row g-4">
+            <div class="{% if can_manage_events_configuration %}col-xl-8{% else %}col-12{% endif %}">
+                <div class="catalog-grid">
+                    {% for row in product_rows %}
+                    <article class="product-card">
+                        <a
+                            href="{% if can_manage_events_configuration %}{% url 'catalog:list' %}?edit_product={{ row.product.id }}#productos-globales{% else %}#{% endif %}"
+                            class="text-decoration-none text-reset d-block"
+                        >
+                            {% if row.product.image %}
+                            <img src="{{ row.product.image.url }}" alt="{{ row.product.name }}">
+                            {% endif %}
+                            <div>
+                                <h5>{{ row.product.name }}</h5>
+                                <p>{{ row.product.description|default:"Sin descripcion" }}</p>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <span>{% if row.product.is_active %}Activo{% else %}Inactivo{% endif %}</span>
+                                    {% if event %}
+                                    <span class="badge {% if row.is_enabled %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                        {% if row.is_enabled %}Habilitado en evento{% else %}No habilitado{% endif %}
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                {% if event %}
+                                <p class="mb-0 mt-2">
+                                    Precio en {{ event.name }}:
+                                    {% if row.event_price %}
+                                    <strong data-number="{{ row.event_price }}" data-format="currency">$ {{ row.event_price }}</strong>
+                                    {% else %}
+                                    <strong>Sin precio configurado</strong>
+                                    {% endif %}
+                                </p>
+                                {% endif %}
+                            </div>
+                        </a>
+                        {% if can_manage_events_configuration %}
+                        <div class="d-flex gap-2 flex-wrap mt-3">
+                            <a href="{% url 'catalog:list' %}?edit_product={{ row.product.id }}#productos-globales" class="btn btn-outline-dark btn-sm">
+                                Editar
+                            </a>
+                            <form method="post" action="{% url 'catalog:product_delete' row.product.id %}" onsubmit="return confirm('Eliminar este producto? Si ya tiene ventas, se retirara para conservar el historial.');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-danger btn-sm">
+                                    Eliminar
+                                </button>
+                            </form>
+                        </div>
                         {% endif %}
-                    </div>
-                    {% if event %}
-                    <p class="mb-0 mt-2">
-                        Precio en {{ event.name }}:
-                        {% if row.event_price %}
-                        <strong data-number="{{ row.event_price }}" data-format="currency">$ {{ row.event_price }}</strong>
-                        {% else %}
-                        <strong>Sin precio configurado</strong>
-                        {% endif %}
-                    </p>
-                    {% endif %}
+                    </article>
+                    {% empty %}
+                    <p>No hay productos cargados.</p>
+                    {% endfor %}
                 </div>
-            </article>
-            {% empty %}
-            <p>No hay productos cargados.</p>
-            {% endfor %}
+            </div>
+
+            {% if can_manage_events_configuration %}
+            <div class="col-xl-4" id="producto-form">
+                <div class="quick-category-header mb-3">
+                    <span class="eyebrow">{% if editing_product %}Edicion{% else %}Nuevo{% endif %}</span>
+                    <h6 class="mb-0">{% if editing_product %}Actualizar producto{% else %}Registrar producto{% endif %}</h6>
+                </div>
+                <form
+                    method="post"
+                    action="{% if editing_product %}{% url 'catalog:product_update' editing_product.id %}{% else %}{% url 'catalog:create' %}{% endif %}"
+                    class="stack-form"
+                    enctype="multipart/form-data"
+                >
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">{{ product_form.name.label }}</label>
+                        {{ product_form.name }}
+                        {{ product_form.name.errors }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ product_form.description.label }}</label>
+                        {{ product_form.description }}
+                        {{ product_form.description.errors }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ product_form.image.label }}</label>
+                        {{ product_form.image }}
+                        {{ product_form.image.errors }}
+                    </div>
+                    <div class="form-check mb-3">
+                        {{ product_form.is_active }}
+                        <label class="form-check-label" for="{{ product_form.is_active.id_for_label }}">
+                            Producto activo
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-dark w-100">
+                        {% if editing_product %}Guardar cambios{% else %}Guardar producto{% endif %}
+                    </button>
+                    {% if editing_product %}
+                    <a href="{% url 'catalog:list' %}#productos-globales" class="btn btn-link w-100 text-decoration-none">
+                        Cancelar edicion
+                    </a>
+                    {% endif %}
+                </form>
+            </div>
+            {% endif %}
         </div>
     </article>
 </section>

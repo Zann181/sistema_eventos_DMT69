@@ -1,5 +1,6 @@
 import os
 import socket
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -132,6 +133,14 @@ DATABASES = {
     }
 }
 
+if "test" in sys.argv and os.environ.get("DJANGO_TEST_USE_SQLITE", "True").lower() == "true":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "test_db.sqlite3",
+        }
+    }
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -184,18 +193,18 @@ EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
 
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 
-EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() == "True"
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() == "true"
 
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "your_email@example.com")
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 
 EMAIL_HOST_PASSWORD = os.environ.get(
     "EMAIL_HOST_PASSWORD",
-    "change-me",
+    "",
 )
 
 DEFAULT_FROM_EMAIL = os.environ.get(
     "DEFAULT_FROM_EMAIL",
-    "EVENT <your_email@example.com>",
+    "EVENT <no-reply@example.com>",
 )
 
 EMAIL_MEDIA_BASE_URL = os.environ.get("EMAIL_MEDIA_BASE_URL", "")

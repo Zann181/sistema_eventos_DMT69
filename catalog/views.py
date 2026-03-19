@@ -10,11 +10,21 @@ from attendees.models import Category
 from catalog.forms import ProductForm
 from catalog.models import Product
 from identity.application import user_can_access_catalog, user_can_manage_categories, user_can_manage_events
+from sales.application import retire_product
 from sales.models import EventProduct
 
 
-def _build_catalog_context(request, branch, event, *, category_form=None, editing_category=None):
-    products = Product.objects.order_by("name")
+def _build_catalog_context(
+    request,
+    branch,
+    event,
+    *,
+    category_form=None,
+    editing_category=None,
+    product_form=None,
+    editing_product=None,
+):
+    products = Product.objects.filter(branch=branch).order_by("name") if branch else Product.objects.none()
     event_configs = {}
     if branch and event:
         event_configs = {
@@ -35,9 +45,10 @@ def _build_catalog_context(request, branch, event, *, category_form=None, editin
     return {
         "products": products,
         "product_rows": product_rows,
-        "form": ProductForm(),
+        "product_form": product_form or ProductForm(instance=editing_product),
         "category_form": category_form or BranchCategoryForm(branch=branch, instance=editing_category),
         "editing_category": editing_category,
+        "editing_product": editing_product,
         "branch_categories": branch.categories.order_by("name") if branch else Category.objects.none(),
         "branch": branch,
         "event": event,
@@ -47,6 +58,10 @@ def _build_catalog_context(request, branch, event, *, category_form=None, editin
 
 def _catalog_categories_redirect():
     return f"{reverse('catalog:list')}#categorias-sucursal"
+
+
+def _catalog_products_redirect():
+    return f"{reverse('catalog:list')}#productos-globales"
 
 
 def _catalog_categories_guard(request, branch, event):
@@ -59,6 +74,16 @@ def _catalog_categories_guard(request, branch, event):
     return False
 
 
+def _catalog_products_guard(request, branch, event):
+    if not branch or not event:
+        messages.error(request, "Selecciona una sucursal y un evento para administrar productos.")
+        return False
+    if user_can_manage_events(request.user, branch, event):
+        return True
+    messages.error(request, "Solo los administradores pueden gestionar productos.")
+    return False
+
+
 @login_required
 def product_list(request):
     branch = request.current_branch
@@ -68,13 +93,26 @@ def product_list(request):
         return redirect("shared_ui:dashboard")
 
     editing_category = None
+    editing_product = None
     if branch and user_can_manage_categories(request.user, branch, event):
         editing_category = branch.categories.filter(pk=request.GET.get("edit_category")).first() if request.GET.get("edit_category") else None
+    if branch and user_can_manage_events(request.user, branch, event):
+        editing_product = (
+            Product.objects.filter(branch=branch, pk=request.GET.get("edit_product")).first()
+            if request.GET.get("edit_product")
+            else None
+        )
 
     return render(
         request,
         "catalog/list.html",
-        _build_catalog_context(request, branch, event, editing_category=editing_category),
+        _build_catalog_context(
+            request,
+            branch,
+            event,
+            editing_category=editing_category,
+            editing_product=editing_product,
+        ),
     )
 
 
@@ -82,11 +120,7 @@ def product_list(request):
 def product_create(request):
     branch = request.current_branch
     event = request.current_event
-    if not branch or not event:
-        messages.error(request, "Selecciona una sucursal y un evento para crear el producto.")
-        return redirect("shared_ui:dashboard")
-    if not user_can_manage_events(request.user, branch, event):
-        messages.error(request, "No tienes permisos para crear productos en este evento.")
+    if not _catalog_products_guard(request, branch, event):
         return redirect("shared_ui:dashboard")
 
     form = ProductForm(request.POST or None, request.FILES or None)
@@ -106,18 +140,58 @@ def product_create(request):
             },
         )
         messages.success(request, f"Producto global {product.name} creado. Configura el precio del evento para habilitarlo.")
-        return redirect(f"{reverse('sales:pos')}?action=evento-productos")
+        return redirect(_catalog_products_redirect())
 
     return render(
         request,
-        "catalog/form.html",
-        {
-            "form": form,
-            "branch": branch,
-            "event": event,
-            "title": "Nuevo producto",
-        },
+        "catalog/list.html",
+        _build_catalog_context(request, branch, event, product_form=form),
+        status=400,
     )
+
+
+@require_POST
+@login_required
+def product_update(request, product_id):
+    branch = request.current_branch
+    event = request.current_event
+    if not _catalog_products_guard(request, branch, event):
+        return redirect("shared_ui:dashboard")
+
+    product = get_object_or_404(Product, pk=product_id, branch=branch)
+    form = ProductForm(request.POST or None, request.FILES or None, instance=product)
+    if form.is_valid():
+        updated_product = form.save()
+        messages.success(request, f"Producto {updated_product.name} actualizado.")
+        return redirect(_catalog_products_redirect())
+
+    messages.error(request, "Corrige los datos del producto.")
+    return render(
+        request,
+        "catalog/list.html",
+        _build_catalog_context(request, branch, event, product_form=form, editing_product=product),
+        status=400,
+    )
+
+
+@require_POST
+@login_required
+def product_delete(request, product_id):
+    branch = request.current_branch
+    event = request.current_event
+    if not _catalog_products_guard(request, branch, event):
+        return redirect("shared_ui:dashboard")
+
+    product = get_object_or_404(Product, pk=product_id, branch=branch)
+    result = retire_product(branch=branch, product=product, user=request.user)
+    if result["mode"] == "retired":
+        messages.success(
+            request,
+            f"Producto {product.name} retirado globalmente. Se desactivo para conservar el historial.",
+        )
+    else:
+        messages.success(request, f"Producto {product.name} eliminado.")
+    return redirect(_catalog_products_redirect())
 
 
 @require_POST

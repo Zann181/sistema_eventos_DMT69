@@ -370,7 +370,7 @@
 </div>
 
 <div class="modal fade" id="expenseModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog {% if can_manage_events_configuration %}modal-xl{% else %}modal-lg{% endif %} modal-dialog-centered">
         <div class="modal-content neon-modal">
             <div class="modal-header">
                 <div class="quick-category-header mb-0">
@@ -380,35 +380,100 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form method="post" action="{% url 'attendees:expense_create' %}" class="stack-form" enctype="multipart/form-data">
-                    {% csrf_token %}
-                    <div class="mb-3">
-                        <label class="form-label">{{ expense_form.amount.label }}</label>
-                        {{ expense_form.amount }}
-                        {{ expense_form.amount.errors }}
+                <div class="row g-4">
+                    {% if can_manage_events_configuration %}
+                    <div class="col-lg-7">
+                        <div class="quick-category-header mb-3">
+                            <span class="eyebrow">Lista</span>
+                            <h6 class="mb-0">Gastos registrados</h6>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Detalle</th>
+                                        <th>Pago</th>
+                                        <th>Total</th>
+                                        <th class="text-end">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for movement in expense_movements %}
+                                    <tr>
+                                        <td>{{ movement.created_at|date:"d/m H:i" }}</td>
+                                        <td>{{ movement.description|default:"Sin detalle" }}</td>
+                                        <td>
+                                            {% for payment in movement.payments.all %}
+                                            <div>{{ payment.get_method_display }}: <span data-number="{{ payment.amount }}" data-format="currency">$ {{ payment.amount }}</span></div>
+                                            {% empty %}
+                                            <span class="text-muted">Sin pagos</span>
+                                            {% endfor %}
+                                        </td>
+                                        <td data-number="{{ movement.total_amount }}" data-format="currency">$ {{ movement.total_amount }}</td>
+                                        <td class="text-end">
+                                            <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                                <a href="{% url 'attendees:list' %}?tab=gastos&edit_expense={{ movement.id }}" class="btn btn-outline-dark btn-sm">
+                                                    Editar
+                                                </a>
+                                                <form method="post" action="{% url 'attendees:expense_delete' movement.id %}" onsubmit="return confirm('Eliminar este gasto?');">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                        Eliminar
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr><td colspan="5">Aun no hay gastos registrados en entrada.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    {% include "shared_ui/components/payment_split_rows.html" with prefix="expense" %}
-                    <div class="mb-3">
-                        <label class="form-label">{{ expense_form.description.label }}</label>
-                        {{ expense_form.description }}
-                        {{ expense_form.description.errors }}
-                    </div>
-                    {% if can_manage_categories %}
-                    <button type="button" class="btn btn-outline-light w-100 mb-3" data-open-category-modal data-return-tab="gastos">
-                        <i class="fas fa-tags"></i> CRUD categorias
-                    </button>
                     {% endif %}
-                    <button type="submit" class="btn btn-outline-dark w-100">
-                        <i class="fas fa-receipt"></i> Guardar gasto
-                    </button>
-                </form>
+                    <div class="{% if can_manage_events_configuration %}col-lg-5{% else %}col-12{% endif %}">
+                        <div class="quick-category-header mb-3">
+                            <span class="eyebrow">{% if editing_expense %}Edicion{% else %}Nuevo{% endif %}</span>
+                            <h6 class="mb-0">{% if editing_expense %}Actualizar gasto{% else %}Registrar gasto{% endif %}</h6>
+                        </div>
+                        <form method="post" action="{% if editing_expense %}{% url 'attendees:expense_update' editing_expense.id %}{% else %}{% url 'attendees:expense_create' %}{% endif %}" class="stack-form" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label class="form-label">{{ expense_form.amount.label }}</label>
+                                {{ expense_form.amount }}
+                                {{ expense_form.amount.errors }}
+                            </div>
+                            {% include "shared_ui/components/payment_split_rows.html" with prefix="expense" %}
+                            <div class="mb-3">
+                                <label class="form-label">{{ expense_form.description.label }}</label>
+                                {{ expense_form.description }}
+                                {{ expense_form.description.errors }}
+                            </div>
+                            {% if can_manage_categories %}
+                            <button type="button" class="btn btn-outline-light w-100 mb-3" data-open-category-modal data-return-tab="gastos">
+                                <i class="fas fa-tags"></i> CRUD categorias
+                            </button>
+                            {% endif %}
+                            {% if editing_expense %}
+                            <a href="{% url 'attendees:list' %}?tab=gastos" class="btn btn-link w-100 text-decoration-none">
+                                Cancelar edicion
+                            </a>
+                            {% endif %}
+                            <button type="submit" class="btn btn-outline-dark w-100">
+                                <i class="fas fa-receipt"></i> {% if editing_expense %}Actualizar gasto{% else %}Guardar gasto{% endif %}
+                            </button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <div class="modal fade" id="cashDropModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-md modal-dialog-centered">
+    <div class="modal-dialog {% if can_manage_events_configuration %}modal-xl{% else %}modal-md{% endif %} modal-dialog-centered">
         <div class="modal-content neon-modal">
             <div class="modal-header">
                 <div class="quick-category-header mb-0">
@@ -418,27 +483,84 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form method="post" action="{% url 'attendees:cash_drop_create' %}" class="stack-form">
-                    {% csrf_token %}
-                    <div class="mb-3">
-                        <label class="form-label">{{ cash_drop_form.amount.label }}</label>
-                        {{ cash_drop_form.amount }}
-                        {{ cash_drop_form.amount.errors }}
+                <div class="row g-4">
+                    {% if can_manage_events_configuration %}
+                    <div class="col-lg-7">
+                        <div class="quick-category-header mb-3">
+                            <span class="eyebrow">Lista</span>
+                            <h6 class="mb-0">Vaciados registrados</h6>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Detalle</th>
+                                        <th>Total</th>
+                                        <th class="text-end">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for movement in cash_drop_movements %}
+                                    <tr>
+                                        <td>{{ movement.created_at|date:"d/m H:i" }}</td>
+                                        <td>{{ movement.description|default:"Sin detalle" }}</td>
+                                        <td data-number="{{ movement.total_amount }}" data-format="currency">$ {{ movement.total_amount }}</td>
+                                        <td class="text-end">
+                                            <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                                <a href="{% url 'attendees:list' %}?tab=vaciar-caja&edit_cash_drop={{ movement.id }}" class="btn btn-outline-dark btn-sm">
+                                                    Editar
+                                                </a>
+                                                <form method="post" action="{% url 'attendees:cash_drop_delete' movement.id %}" onsubmit="return confirm('Eliminar este vaciado de caja?');">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                        Eliminar
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr><td colspan="4">Aun no hay vaciados de caja registrados en entrada.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">{{ cash_drop_form.description.label }}</label>
-                        {{ cash_drop_form.description }}
-                        {{ cash_drop_form.description.errors }}
-                    </div>
-                    {% if can_manage_categories %}
-                    <button type="button" class="btn btn-outline-light w-100 mb-3" data-open-category-modal data-return-tab="vaciar-caja">
-                        <i class="fas fa-tags"></i> CRUD categorias
-                    </button>
                     {% endif %}
-                    <button type="submit" class="btn btn-outline-dark w-100">
-                        <i class="fas fa-vault"></i> Guardar movimiento
-                    </button>
-                </form>
+                    <div class="{% if can_manage_events_configuration %}col-lg-5{% else %}col-12{% endif %}">
+                        <div class="quick-category-header mb-3">
+                            <span class="eyebrow">{% if editing_cash_drop %}Edicion{% else %}Nuevo{% endif %}</span>
+                            <h6 class="mb-0">{% if editing_cash_drop %}Actualizar vaciado{% else %}Registrar vaciado{% endif %}</h6>
+                        </div>
+                        <form method="post" action="{% if editing_cash_drop %}{% url 'attendees:cash_drop_update' editing_cash_drop.id %}{% else %}{% url 'attendees:cash_drop_create' %}{% endif %}" class="stack-form">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label class="form-label">{{ cash_drop_form.amount.label }}</label>
+                                {{ cash_drop_form.amount }}
+                                {{ cash_drop_form.amount.errors }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">{{ cash_drop_form.description.label }}</label>
+                                {{ cash_drop_form.description }}
+                                {{ cash_drop_form.description.errors }}
+                            </div>
+                            {% if can_manage_categories %}
+                            <button type="button" class="btn btn-outline-light w-100 mb-3" data-open-category-modal data-return-tab="vaciar-caja">
+                                <i class="fas fa-tags"></i> CRUD categorias
+                            </button>
+                            {% endif %}
+                            {% if editing_cash_drop %}
+                            <a href="{% url 'attendees:list' %}?tab=vaciar-caja" class="btn btn-link w-100 text-decoration-none">
+                                Cancelar edicion
+                            </a>
+                            {% endif %}
+                            <button type="submit" class="btn btn-outline-dark w-100">
+                                <i class="fas fa-vault"></i> {% if editing_cash_drop %}Actualizar movimiento{% else %}Guardar movimiento{% endif %}
+                            </button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

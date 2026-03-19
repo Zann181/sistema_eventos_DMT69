@@ -5,25 +5,28 @@ from identity.models import UserBranchMembership, UserEventAssignment
 
 
 GLOBAL_ADMIN_GROUP = "Administrador Global"
+ADMIN_ROLES = {
+    "admin",
+    UserBranchMembership.ROLE_BRANCH,
+    UserBranchMembership.ROLE_EVENT_ADMIN,
+}
 
 
 def build_permission_flags(user, branch=None, event=None, role=None):
     effective_role = role if role is not None else get_effective_role(user, branch, event)
     can_manage_branch_configuration = bool(getattr(user, "is_authenticated", False) and is_global_admin(user))
-    can_manage_events_configuration = effective_role in {"admin", UserBranchMembership.ROLE_EVENT_ADMIN}
+    can_manage_events_configuration = effective_role in ADMIN_ROLES
     can_manage_categories_flag = can_manage_events_configuration
     can_access_attendees_flag = effective_role in {
-        "admin",
-        UserBranchMembership.ROLE_EVENT_ADMIN,
+        *ADMIN_ROLES,
         UserBranchMembership.ROLE_ENTRANCE,
     }
     can_access_sales_flag = effective_role in {
-        "admin",
-        UserBranchMembership.ROLE_EVENT_ADMIN,
+        *ADMIN_ROLES,
         UserBranchMembership.ROLE_BAR,
     }
-    can_access_catalog_flag = effective_role in {"admin", UserBranchMembership.ROLE_EVENT_ADMIN}
-    can_switch_context_flag = effective_role in {"admin", UserBranchMembership.ROLE_EVENT_ADMIN}
+    can_access_catalog_flag = effective_role in ADMIN_ROLES
+    can_switch_context_flag = effective_role in ADMIN_ROLES
     return {
         "current_role": effective_role,
         "can_manage_configuration": can_manage_branch_configuration or can_manage_events_configuration,
@@ -60,7 +63,10 @@ def get_user_membership(user, branch):
 
 
 def user_can_manage_branch(user, branch=None):
-    return is_global_admin(user)
+    if is_global_admin(user):
+        return True
+    membership = get_user_membership(user, branch)
+    return bool(membership and membership.role == UserBranchMembership.ROLE_BRANCH)
 
 
 def user_can_manage_events(user, branch=None, event=None):

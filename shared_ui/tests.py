@@ -2,6 +2,8 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 import email.policy
+import smtplib
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth.models import Group, User
@@ -1314,6 +1316,50 @@ class ModularArchitectureTests(TestCase):
         self.assertTrue(Category.objects.filter(branch=self.branch, name="Backstage").exists())
         self.assertContains(response, "CRUD de acceso por sucursal")
 
+    def test_branch_role_can_manage_catalog_crud_from_list(self):
+        product = Product.objects.create(
+            branch=self.branch,
+            name="Ron",
+            description="Botella",
+            created_by=self.user,
+        )
+        EventProduct.objects.create(
+            branch=self.branch,
+            event=self.event,
+            product=product,
+            is_enabled=True,
+            event_price=Decimal("90000"),
+            updated_by=self.user,
+        )
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        list_response = client.get(reverse("catalog:list"))
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "CRUD de acceso por sucursal")
+        self.assertContains(list_response, "Guardar producto")
+        self.assertContains(list_response, "Ron")
+
+        update_response = client.post(
+            reverse("catalog:product_update", args=[product.id]),
+            {
+                "name": "Ron anejo",
+                "description": "Botella premium",
+                "is_active": "on",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        product.refresh_from_db()
+        self.assertEqual(product.name, "Ron anejo")
+        self.assertContains(update_response, "Producto Ron anejo actualizado.")
+
     def test_catalog_category_delete_deactivates_when_attendees_exist(self):
         client = Client()
         self.assertTrue(client.login(username="operador", password="12345678"))
@@ -1770,6 +1816,95 @@ class ModularArchitectureTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Category.objects.filter(branch=self.branch, name="Taquilla").exists())
         self.assertContains(response, "Solo los administradores pueden gestionar categorias.")
+
+    def test_branch_role_can_update_and_delete_entrance_expense(self):
+        movement = create_cash_movement(
+            branch=self.branch,
+            event=self.event,
+            user=self.user,
+            module=CashMovement.MODULE_ENTRANCE,
+            movement_type=CashMovement.TYPE_EXPENSE,
+            total_amount=Decimal("20000"),
+            description="Gasto inicial",
+            payments=[{"method": "efectivo", "amount": Decimal("20000")}],
+        )
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        list_response = client.get(f"{reverse('attendees:list')}?tab=gastos")
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "Gasto inicial")
+
+        update_response = client.post(
+            reverse("attendees:expense_update", args=[movement.id]),
+            {
+                "amount": "20000",
+                "description": "Gasto actualizado",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        movement.refresh_from_db()
+        self.assertEqual(movement.description, "Gasto actualizado")
+
+        delete_response = client.post(
+            reverse("attendees:expense_delete", args=[movement.id]),
+            follow=True,
+        )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertFalse(CashMovement.objects.filter(pk=movement.id).exists())
+
+    def test_branch_role_can_update_and_delete_bar_cash_drop(self):
+        movement = create_cash_movement(
+            branch=self.branch,
+            event=self.event,
+            user=self.user,
+            module=CashMovement.MODULE_BAR,
+            movement_type=CashMovement.TYPE_CASH_DROP,
+            total_amount=Decimal("35000"),
+            description="Retiro inicial",
+        )
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        list_response = client.get(f"{reverse('sales:pos')}?action=vaciar-caja")
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "Vaciados registrados")
+        self.assertContains(list_response, "Retiro inicial")
+
+        update_response = client.post(
+            reverse("sales:cash_drop_update", args=[movement.id]),
+            {
+                "amount": "42000",
+                "description": "Retiro actualizado",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        movement.refresh_from_db()
+        self.assertEqual(movement.total_amount, Decimal("42000"))
+        self.assertEqual(movement.description, "Retiro actualizado")
+
+        delete_response = client.post(
+            reverse("sales:cash_drop_delete", args=[movement.id]),
+            follow=True,
+        )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertFalse(CashMovement.objects.filter(pk=movement.id).exists())
 
     def test_attendees_category_crud_shortcuts_are_hidden_for_entrance_role(self):
         entrance = User.objects.create_user(username="entrada-crud", password="12345678@")
@@ -2855,6 +2990,21 @@ class ModularArchitectureTests(TestCase):
         built = mail.outbox[0].message(policy=email.policy.SMTP)
         mime_dump = built.as_string()
         self.assertIn("Content-ID: <event_flyer_inline>", mime_dump)
+
+    def test_send_attendee_ticket_email_retries_without_smtp_auth(self):
+        with patch("ticketing.application.get_connection", return_value=object()) as get_connection_mock, patch(
+            "ticketing.application.RelatedEmailMultiAlternatives.send",
+            side_effect=[
+                smtplib.SMTPNotSupportedError("SMTP AUTH extension not supported by server."),
+                1,
+            ],
+        ) as send_mock:
+            sent, error = send_attendee_ticket_email(self.attendee)
+
+        self.assertTrue(sent)
+        self.assertEqual(error, "Correo enviado.")
+        get_connection_mock.assert_called_once_with(username="", password="")
+        self.assertEqual(send_mock.call_count, 2)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_attendee_create_sends_email_with_qr_attachment(self):

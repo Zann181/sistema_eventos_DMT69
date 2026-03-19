@@ -5,18 +5,19 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Sum
 from django.http import Http404, JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from catalog.models import Product
-from identity.application import require_branch_admin, user_can_access_sales, user_can_manage_events
+from identity.application import user_can_access_sales, user_can_manage_events
 from sales.application import (
     build_event_product_rows,
     build_grouped_sales,
     build_bar_sales_stats,
     calculate_sale_cart_total,
     create_cash_movement,
+    delete_cash_movement,
     delete_sale,
     parse_sale_cart,
     parse_event_product_rows,
@@ -27,6 +28,7 @@ from sales.application import (
     retire_product,
     summarize_payment_methods,
     sync_event_products,
+    update_cash_movement,
 )
 from sales.forms import BarProductForm, CashDropForm, ExpenseForm, SaleForm
 from sales.models import BarSale, CashMovement, EventProduct
@@ -42,6 +44,61 @@ def _sales_permissions_guard(request):
         messages.error(request, "No tienes permisos para acceder al modulo de barra.")
         return None, None
     return branch, event
+
+
+def _can_manage_bar_configuration(user, branch, event):
+    return user_can_manage_events(user, branch, event)
+
+
+def _get_editing_cash_movement(branch, event, module, movement_type, movement_id):
+    if not movement_id:
+        return None
+    return (
+        CashMovement.objects.filter(
+            pk=movement_id,
+            branch=branch,
+            event=event,
+            module=module,
+            movement_type=movement_type,
+        )
+        .select_related("created_by")
+        .prefetch_related("payments")
+        .first()
+    )
+
+
+def _build_expense_form(movement=None):
+    initial = {}
+    if movement is not None:
+        initial = {
+            "amount": movement.total_amount,
+            "description": movement.description,
+        }
+    return ExpenseForm(initial=initial)
+
+
+def _build_cash_drop_form(movement=None):
+    initial = {}
+    if movement is not None:
+        initial = {
+            "amount": movement.total_amount,
+            "description": movement.description,
+        }
+    return CashDropForm(initial=initial)
+
+
+def _expense_payment_inputs_present(request, *, prefix):
+    if (request.POST.get("payment_method") or "").strip():
+        return True
+    for index in range(1, 5):
+        if (
+            (request.POST.get(f"{prefix}_payment_method_{index}") or "").strip()
+            or (request.POST.get(f"{prefix}_payment_amount_{index}") or "").strip()
+            or (request.POST.get(f"{prefix}_payment_reference_{index}") or "").strip()
+            or request.FILES.get(f"{prefix}_payment_proof_{index}")
+        ):
+            return True
+    return False
 
 
 def _build_cash_snapshot(branch, event):
@@ -68,7 +125,7 @@ def _build_cash_snapshot(branch, event):
         is_enabled=True,
         event_price__isnull=False,
     ).count()
-    total_products = Product.objects.filter(is_active=True).count()
+    total_products = Product.objects.filter(branch=branch, is_active=True).count()
 
     return {
         "sales_total": sales_total,
@@ -92,6 +149,9 @@ def _pos_context(
     cash_drop_form=None,
     product_form=None,
     initial_action="",
+    editing_expense=None,
+    editing_cash_drop=None,
+    editing_product=None,
 ):
     sale_form = sale_form or SaleForm(branch=branch, event=event)
     recent_sales = (
@@ -106,14 +166,38 @@ def _pos_context(
         .prefetch_related("payments")
         [:10]
     )
+    expense_movements = (
+        CashMovement.objects.filter(
+            branch=branch,
+            event=event,
+            module=CashMovement.MODULE_BAR,
+            movement_type=CashMovement.TYPE_EXPENSE,
+        )
+        .select_related("created_by")
+        .prefetch_related("payments")
+        [:10]
+    )
+    cash_drop_movements = (
+        CashMovement.objects.filter(
+            branch=branch,
+            event=event,
+            module=CashMovement.MODULE_BAR,
+            movement_type=CashMovement.TYPE_CASH_DROP,
+        )
+        .select_related("created_by")
+        .prefetch_related("payments")
+        [:10]
+    )
     event_product_rows = build_event_product_rows(branch=branch, event=event)
     return {
         "form": sale_form,
-        "expense_form": expense_form or ExpenseForm(),
-        "cash_drop_form": cash_drop_form or CashDropForm(),
-        "product_form": product_form or BarProductForm(),
+        "expense_form": expense_form or _build_expense_form(editing_expense),
+        "cash_drop_form": cash_drop_form or _build_cash_drop_form(editing_cash_drop),
+        "product_form": product_form or BarProductForm(instance=editing_product),
         "sales": recent_sales,
         "cash_movements": cash_movements,
+        "expense_movements": expense_movements,
+        "cash_drop_movements": cash_drop_movements,
         "branch": branch,
         "event": event,
         "stats": _build_cash_snapshot(branch, event),
@@ -121,6 +205,9 @@ def _pos_context(
         "event_product_rows": event_product_rows,
         "sale_products": sale_form.fields["event_product"].queryset,
         "initial_action": initial_action,
+        "editing_expense": editing_expense,
+        "editing_cash_drop": editing_cash_drop,
+        "editing_product": editing_product,
     }
 
 
@@ -130,10 +217,41 @@ def point_of_sale(request):
     if not branch or not event:
         return redirect("shared_ui:dashboard")
 
+    editing_expense = None
+    editing_cash_drop = None
+    editing_product = None
+    if _can_manage_bar_configuration(request.user, branch, event):
+        editing_expense = _get_editing_cash_movement(
+            branch,
+            event,
+            CashMovement.MODULE_BAR,
+            CashMovement.TYPE_EXPENSE,
+            request.GET.get("edit_expense"),
+        )
+        editing_cash_drop = _get_editing_cash_movement(
+            branch,
+            event,
+            CashMovement.MODULE_BAR,
+            CashMovement.TYPE_CASH_DROP,
+            request.GET.get("edit_cash_drop"),
+        )
+        editing_product = (
+            Product.objects.filter(branch=branch, pk=request.GET.get("edit_product")).first()
+            if request.GET.get("edit_product")
+            else None
+        )
+
     return render(
         request,
         "sales/pos.html",
-        _pos_context(branch, event, initial_action=request.GET.get("action", "")),
+        _pos_context(
+            branch,
+            event,
+            initial_action=request.GET.get("action", ""),
+            editing_expense=editing_expense,
+            editing_cash_drop=editing_cash_drop,
+            editing_product=editing_product,
+        ),
     )
 
 
@@ -280,15 +398,14 @@ def product_create(request):
 @require_POST
 @login_required
 def product_update(request, product_id):
-    branch = require_branch_admin(request)
-    if not branch:
+    branch, event = _sales_permissions_guard(request)
+    if not branch or not event:
         return redirect("shared_ui:dashboard")
-    event = getattr(request, "current_event", None)
-    if not event:
-        messages.error(request, "Selecciona un evento.")
+    if not _can_manage_bar_configuration(request.user, branch, event):
+        messages.error(request, "Solo los administradores pueden modificar productos.")
         return redirect("shared_ui:dashboard")
 
-    product = Product.objects.filter(pk=product_id).first()
+    product = Product.objects.filter(branch=branch, pk=product_id).first()
     if product is None:
         raise Http404("El producto no existe.")
 
@@ -298,7 +415,7 @@ def product_update(request, product_id):
         return render(
             request,
             "sales/pos.html",
-            _pos_context(branch, event, product_form=form, initial_action="evento-productos"),
+            _pos_context(branch, event, product_form=form, initial_action="evento-productos", editing_product=product),
             status=400,
         )
 
@@ -310,15 +427,14 @@ def product_update(request, product_id):
 @require_POST
 @login_required
 def product_delete(request, product_id):
-    branch = require_branch_admin(request)
-    if not branch:
+    branch, event = _sales_permissions_guard(request)
+    if not branch or not event:
         return redirect("shared_ui:dashboard")
-    event = getattr(request, "current_event", None)
-    if not event:
-        messages.error(request, "Selecciona un evento.")
+    if not _can_manage_bar_configuration(request.user, branch, event):
+        messages.error(request, "Solo los administradores pueden eliminar productos.")
         return redirect("shared_ui:dashboard")
 
-    product = Product.objects.filter(pk=product_id).first()
+    product = Product.objects.filter(branch=branch, pk=product_id).first()
     if product is None:
         raise Http404("El producto no existe.")
 
@@ -412,6 +528,97 @@ def expense_create(request):
 
 @require_POST
 @login_required
+def expense_update(request, movement_id):
+    branch, event = _sales_permissions_guard(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _can_manage_bar_configuration(request.user, branch, event):
+        messages.error(request, "Solo los administradores pueden modificar gastos.")
+        return redirect("shared_ui:dashboard")
+
+    movement = get_object_or_404(
+        CashMovement,
+        pk=movement_id,
+        branch=branch,
+        event=event,
+        module=CashMovement.MODULE_BAR,
+        movement_type=CashMovement.TYPE_EXPENSE,
+    )
+    form = ExpenseForm(request.POST, request.FILES)
+    if not form.is_valid():
+        messages.error(request, "Corrige los datos del gasto.")
+        return render(
+            request,
+            "sales/pos.html",
+            _pos_context(
+                branch,
+                event,
+                expense_form=form,
+                initial_action="gastos",
+                editing_expense=movement,
+            ),
+            status=400,
+        )
+
+    payments = None
+    if _expense_payment_inputs_present(request, prefix="expense"):
+        try:
+            payments = resolve_expense_payments(request.POST, request.FILES, form, prefix="expense")
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return render(
+                request,
+                "sales/pos.html",
+                _pos_context(
+                    branch,
+                    event,
+                    expense_form=form,
+                    initial_action="gastos",
+                    editing_expense=movement,
+                ),
+                status=400,
+            )
+
+    try:
+        update_cash_movement(
+            movement=movement,
+            total_amount=form.cleaned_data["amount"],
+            description=form.cleaned_data["description"],
+            payments=payments,
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect(f"{reverse('sales:pos')}?action=gastos&edit_expense={movement.id}")
+
+    messages.success(request, "Gasto actualizado en barra.")
+    return redirect(f"{reverse('sales:pos')}?action=gastos")
+
+
+@require_POST
+@login_required
+def expense_delete(request, movement_id):
+    branch, event = _sales_permissions_guard(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _can_manage_bar_configuration(request.user, branch, event):
+        messages.error(request, "Solo los administradores pueden eliminar gastos.")
+        return redirect("shared_ui:dashboard")
+
+    movement = get_object_or_404(
+        CashMovement,
+        pk=movement_id,
+        branch=branch,
+        event=event,
+        module=CashMovement.MODULE_BAR,
+        movement_type=CashMovement.TYPE_EXPENSE,
+    )
+    delete_cash_movement(movement=movement)
+    messages.success(request, "Gasto eliminado de barra.")
+    return redirect(f"{reverse('sales:pos')}?action=gastos")
+
+
+@require_POST
+@login_required
 def cash_drop_create(request):
     branch, event = _sales_permissions_guard(request)
     if not branch or not event:
@@ -443,3 +650,74 @@ def cash_drop_create(request):
 
     messages.success(request, "Vaciado de caja registrado en barra.")
     return redirect("sales:pos")
+
+
+@require_POST
+@login_required
+def cash_drop_update(request, movement_id):
+    branch, event = _sales_permissions_guard(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _can_manage_bar_configuration(request.user, branch, event):
+        messages.error(request, "Solo los administradores pueden modificar vaciados de caja.")
+        return redirect("shared_ui:dashboard")
+
+    movement = get_object_or_404(
+        CashMovement,
+        pk=movement_id,
+        branch=branch,
+        event=event,
+        module=CashMovement.MODULE_BAR,
+        movement_type=CashMovement.TYPE_CASH_DROP,
+    )
+    form = CashDropForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Corrige los datos del vaciado de caja.")
+        return render(
+            request,
+            "sales/pos.html",
+            _pos_context(
+                branch,
+                event,
+                cash_drop_form=form,
+                initial_action="vaciar-caja",
+                editing_cash_drop=movement,
+            ),
+            status=400,
+        )
+
+    try:
+        update_cash_movement(
+            movement=movement,
+            total_amount=form.cleaned_data["amount"],
+            description=form.cleaned_data["description"],
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect(f"{reverse('sales:pos')}?action=vaciar-caja&edit_cash_drop={movement.id}")
+
+    messages.success(request, "Vaciado de caja actualizado en barra.")
+    return redirect(f"{reverse('sales:pos')}?action=vaciar-caja")
+
+
+@require_POST
+@login_required
+def cash_drop_delete(request, movement_id):
+    branch, event = _sales_permissions_guard(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _can_manage_bar_configuration(request.user, branch, event):
+        messages.error(request, "Solo los administradores pueden eliminar vaciados de caja.")
+        return redirect("shared_ui:dashboard")
+
+    movement = get_object_or_404(
+        CashMovement,
+        pk=movement_id,
+        branch=branch,
+        event=event,
+        module=CashMovement.MODULE_BAR,
+        movement_type=CashMovement.TYPE_CASH_DROP,
+    )
+    delete_cash_movement(movement=movement)
+    messages.success(request, "Vaciado de caja eliminado de barra.")
+    return redirect(f"{reverse('sales:pos')}?action=vaciar-caja")

@@ -1,6 +1,7 @@
 import base64
 import email.policy
 import re
+import smtplib
 from email.message import EmailMessage as PythonEmailMessage
 from decimal import Decimal
 from html import escape
@@ -11,7 +12,7 @@ import qrcode
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.core.mail import EmailMultiAlternatives
+from django.core.mail import EmailMultiAlternatives, get_connection
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_naive, make_aware
 
@@ -739,27 +740,44 @@ def send_attendee_ticket_email(attendee):
         qr_cid=qr_cid,
     )
 
-    email = RelatedEmailMultiAlternatives(
-        subject=payload["subject"],
-        body=payload["text_content"],
-        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-        to=[attendee.email],
-    )
-    email.attach_alternative(payload["html_content"], "text/html")
+    def build_email(connection=None):
+        email = RelatedEmailMultiAlternatives(
+            subject=payload["subject"],
+            body=payload["text_content"],
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            to=[attendee.email],
+            connection=connection,
+        )
+        email.attach_alternative(payload["html_content"], "text/html")
 
-    if qr_bytes:
-        email.attach_inline_image(
-            qr_bytes,
-            qr_cid,
-            f"{attendee.qr_code}.png",
-            mimetype="image/png",
-        )
-    if flyer_png:
-        email.attach_inline_image(
-            flyer_png,
-            flyer_cid,
-            f"{attendee.event.slug or attendee.event.pk}-flyer.png",
-            mimetype="image/png",
-        )
-    email.send()
+        if qr_bytes:
+            email.attach_inline_image(
+                qr_bytes,
+                qr_cid,
+                f"{attendee.qr_code}.png",
+                mimetype="image/png",
+            )
+        if flyer_png:
+            email.attach_inline_image(
+                flyer_png,
+                flyer_cid,
+                f"{attendee.event.slug or attendee.event.pk}-flyer.png",
+                mimetype="image/png",
+            )
+        return email
+
+    try:
+        build_email().send()
+    except smtplib.SMTPException as exc:
+        message = str(exc)
+        if not isinstance(exc, smtplib.SMTPNotSupportedError) and "auth extension not supported" not in message.lower():
+            return False, message
+        try:
+            fallback_connection = get_connection(username="", password="")
+            build_email(connection=fallback_connection).send()
+        except Exception as fallback_exc:
+            return False, str(fallback_exc)
+    except Exception as exc:
+        return False, str(exc)
+
     return True, "Correo enviado."

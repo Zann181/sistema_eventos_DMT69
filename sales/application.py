@@ -620,6 +620,50 @@ def create_cash_movement(
     return movement
 
 
+@transaction.atomic
+def update_cash_movement(
+    *,
+    movement,
+    total_amount,
+    description="",
+    payments=None,
+):
+    total_amount = Decimal(total_amount)
+    if total_amount <= 0:
+        raise ValueError("El valor debe ser mayor a cero.")
+
+    current_payment_total = movement.payments.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    payments = payments if payments is not None else None
+
+    if payments is not None:
+        payment_total = sum(Decimal(payment["amount"]) for payment in payments)
+        if payment_total != total_amount:
+            raise ValueError("La suma de las formas de pago debe coincidir con el total.")
+        movement.payments.all().delete()
+        for payment in payments:
+            CashMovementPayment.objects.create(
+                movement=movement,
+                method=payment["method"],
+                amount=payment["amount"],
+                reference=payment.get("reference", ""),
+                transfer_proof=payment.get("transfer_proof"),
+            )
+    elif movement.movement_type == CashMovement.TYPE_EXPENSE and current_payment_total != total_amount:
+        raise ValueError(
+            "Si cambias el valor del gasto, debes volver a registrar las formas de pago.",
+        )
+
+    movement.total_amount = total_amount
+    movement.description = description
+    movement.save(update_fields=["total_amount", "description"])
+    return movement
+
+
+@transaction.atomic
+def delete_cash_movement(*, movement):
+    movement.delete()
+
+
 def _build_event_day_identity(event, count_index):
     stamp = timezone.now().strftime("%Y%m%d%H%M%S%f")
     return (

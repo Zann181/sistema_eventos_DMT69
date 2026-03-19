@@ -18,7 +18,14 @@ from attendees.application import check_in_attendee, delete_branch_category, get
 from attendees.forms import AttendeeForm, BranchCategoryForm
 from attendees.models import Attendee, Category
 from identity.application import user_can_access_attendees, user_can_manage_categories, user_can_manage_events
-from sales.application import create_cash_movement, extract_split_payments, register_event_day_entry, resolve_expense_payments
+from sales.application import (
+    create_cash_movement,
+    delete_cash_movement,
+    extract_split_payments,
+    register_event_day_entry,
+    resolve_expense_payments,
+    update_cash_movement,
+)
 from sales.forms import CashDropForm, EventDayEntryForm, ExpenseForm
 from sales.models import CashMovement, CashMovementPayment
 from ticketing.application import (
@@ -83,6 +90,64 @@ def _ensure_category_management_access(request, branch, event):
     if user_can_manage_categories(request.user, branch, event):
         return True
     messages.error(request, "Solo los administradores pueden gestionar categorias.")
+    return False
+
+
+def _ensure_cash_management_access(request, branch, event):
+    if user_can_manage_events(request.user, branch, event):
+        return True
+    messages.error(request, "Solo los administradores pueden gestionar gastos y vaciados.")
+    return False
+
+
+def _get_editing_cash_movement(branch, event, module, movement_type, movement_id):
+    if not movement_id:
+        return None
+    return (
+        CashMovement.objects.filter(
+            pk=movement_id,
+            branch=branch,
+            event=event,
+            module=module,
+            movement_type=movement_type,
+        )
+        .select_related("created_by")
+        .prefetch_related("payments")
+        .first()
+    )
+
+
+def _build_expense_form(movement=None):
+    initial = {}
+    if movement is not None:
+        initial = {
+            "amount": movement.total_amount,
+            "description": movement.description,
+        }
+    return ExpenseForm(initial=initial)
+
+
+def _build_cash_drop_form(movement=None):
+    initial = {}
+    if movement is not None:
+        initial = {
+            "amount": movement.total_amount,
+            "description": movement.description,
+        }
+    return CashDropForm(initial=initial)
+
+
+def _expense_payment_inputs_present(request, *, prefix):
+    if (request.POST.get("payment_method") or "").strip():
+        return True
+    for index in range(1, 5):
+        if (
+            (request.POST.get(f"{prefix}_payment_method_{index}") or "").strip()
+            or (request.POST.get(f"{prefix}_payment_amount_{index}") or "").strip()
+            or (request.POST.get(f"{prefix}_payment_reference_{index}") or "").strip()
+            or request.FILES.get(f"{prefix}_payment_proof_{index}")
+        ):
+            return True
     return False
 
 
@@ -304,11 +369,25 @@ def _dashboard_context(
     selected_category_id=None,
     category_form=None,
     editing_category=None,
+    expense_form=None,
+    cash_drop_form=None,
+    editing_expense=None,
+    editing_cash_drop=None,
 ):
     attendees = _attendee_queryset(branch, event)
     today = timezone.localdate()
     categories = _category_summary(branch, event)
     cash_movements = CashMovement.objects.filter(branch=branch, event=event)
+    entrance_expense_movements = (
+        cash_movements.filter(module=CashMovement.MODULE_ENTRANCE, movement_type=CashMovement.TYPE_EXPENSE)
+        .select_related("created_by")
+        .prefetch_related("payments")
+    )[:10]
+    entrance_cash_drop_movements = (
+        cash_movements.filter(module=CashMovement.MODULE_ENTRANCE, movement_type=CashMovement.TYPE_CASH_DROP)
+        .select_related("created_by")
+        .prefetch_related("payments")
+    )[:10]
     manual_paid = attendees.filter(origin=Attendee.ORIGIN_MANUAL).aggregate(total=Sum("paid_amount")).get("total") or Decimal("0")
     total_balance = attendees.aggregate(total=Sum("included_balance")).get("total") or 0
     total_attendees = attendees.count()
@@ -381,8 +460,8 @@ def _dashboard_context(
         "editing_category": editing_category,
         "branch_categories": branch.categories.order_by("name"),
         "event_day_form": EventDayEntryForm(branch=branch),
-        "expense_form": ExpenseForm(),
-        "cash_drop_form": CashDropForm(),
+        "expense_form": expense_form or _build_expense_form(editing_expense),
+        "cash_drop_form": cash_drop_form or _build_cash_drop_form(editing_cash_drop),
         "categorias": categories,
         "categoria_precios_json": json.dumps(price_map),
         "stats": stats,
@@ -394,6 +473,10 @@ def _dashboard_context(
         "registros": attendees.count(),
         "initial_tab": initial_tab,
         "open_modal": open_modal,
+        "editing_expense": editing_expense,
+        "editing_cash_drop": editing_cash_drop,
+        "expense_movements": entrance_expense_movements,
+        "cash_drop_movements": entrance_cash_drop_movements,
         "post_create_notice": _build_post_create_notice(request, branch, event),
     }
     context.update(_list_context(request, branch, event))
@@ -418,8 +501,25 @@ def attendee_list(request):
         open_modal = ""
     selected_category_id = request.GET.get("selected_category")
     editing_category = None
+    editing_expense = None
+    editing_cash_drop = None
     if user_can_manage_categories(request.user, branch, event):
         editing_category = _get_editing_category(branch, request.GET.get("edit_category"))
+    if user_can_manage_events(request.user, branch, event):
+        editing_expense = _get_editing_cash_movement(
+            branch,
+            event,
+            CashMovement.MODULE_ENTRANCE,
+            CashMovement.TYPE_EXPENSE,
+            request.GET.get("edit_expense"),
+        )
+        editing_cash_drop = _get_editing_cash_movement(
+            branch,
+            event,
+            CashMovement.MODULE_ENTRANCE,
+            CashMovement.TYPE_CASH_DROP,
+            request.GET.get("edit_cash_drop"),
+        )
     context = _dashboard_context(
         request,
         branch,
@@ -428,6 +528,8 @@ def attendee_list(request):
         open_modal=open_modal,
         selected_category_id=selected_category_id,
         editing_category=editing_category,
+        editing_expense=editing_expense,
+        editing_cash_drop=editing_cash_drop,
     )
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(request, "attendees/_table.html", context)
@@ -662,6 +764,93 @@ def attendee_expense_create(request):
     return redirect("attendees:list")
 
 
+@require_POST
+@login_required
+def attendee_expense_update(request, movement_id):
+    branch, event = _get_branch_and_event(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _ensure_cash_management_access(request, branch, event):
+        return redirect("shared_ui:dashboard")
+
+    movement = get_object_or_404(
+        CashMovement,
+        pk=movement_id,
+        branch=branch,
+        event=event,
+        module=CashMovement.MODULE_ENTRANCE,
+        movement_type=CashMovement.TYPE_EXPENSE,
+    )
+    attendee_form = AttendeeForm(branch=branch, event=event)
+    form = ExpenseForm(request.POST or None, request.FILES or None)
+    if request.method == "POST":
+        if form.is_valid():
+            payments = None
+            if _expense_payment_inputs_present(request, prefix="expense"):
+                try:
+                    payments = resolve_expense_payments(request.POST, request.FILES, form, prefix="expense")
+                except ValueError as exc:
+                    messages.error(request, str(exc))
+                    context = _dashboard_context(
+                        request,
+                        branch,
+                        event,
+                        form=attendee_form,
+                        initial_tab="gastos",
+                        expense_form=form,
+                        editing_expense=movement,
+                    )
+                    return render(request, "attendees/list.html", context, status=400)
+            try:
+                update_cash_movement(
+                    movement=movement,
+                    total_amount=form.cleaned_data["amount"],
+                    description=form.cleaned_data["description"],
+                    payments=payments,
+                )
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect(f"{reverse('attendees:list')}?tab=gastos&edit_expense={movement.id}")
+            messages.success(request, "Gasto actualizado en entrada.")
+            return redirect(f"{reverse('attendees:list')}?tab=gastos")
+        messages.error(request, "Corrige los datos del gasto.")
+
+        context = _dashboard_context(
+            request,
+            branch,
+            event,
+            form=attendee_form,
+            initial_tab="gastos",
+            expense_form=form,
+            editing_expense=movement,
+        )
+        return render(request, "attendees/list.html", context, status=400)
+
+    return redirect("attendees:list")
+
+
+@require_POST
+@login_required
+def attendee_expense_delete(request, movement_id):
+    branch, event = _get_branch_and_event(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _ensure_cash_management_access(request, branch, event):
+        return redirect("shared_ui:dashboard")
+
+    movement = get_object_or_404(
+        CashMovement,
+        pk=movement_id,
+        branch=branch,
+        event=event,
+        module=CashMovement.MODULE_ENTRANCE,
+        movement_type=CashMovement.TYPE_EXPENSE,
+    )
+    delete_cash_movement(movement=movement)
+    messages.success(request, "Gasto eliminado de entrada.")
+    return redirect(f"{reverse('attendees:list')}?tab=gastos")
+
+
 @login_required
 def attendee_cash_drop_create(request):
     branch, event = _get_branch_and_event(request)
@@ -697,6 +886,76 @@ def attendee_cash_drop_create(request):
         return render(request, "attendees/list.html", context, status=400)
 
     return redirect("attendees:list")
+
+
+@require_POST
+@login_required
+def attendee_cash_drop_update(request, movement_id):
+    branch, event = _get_branch_and_event(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _ensure_cash_management_access(request, branch, event):
+        return redirect("shared_ui:dashboard")
+
+    movement = get_object_or_404(
+        CashMovement,
+        pk=movement_id,
+        branch=branch,
+        event=event,
+        module=CashMovement.MODULE_ENTRANCE,
+        movement_type=CashMovement.TYPE_CASH_DROP,
+    )
+    attendee_form = AttendeeForm(branch=branch, event=event)
+    form = CashDropForm(request.POST or None)
+    if request.method == "POST":
+        if form.is_valid():
+            try:
+                update_cash_movement(
+                    movement=movement,
+                    total_amount=form.cleaned_data["amount"],
+                    description=form.cleaned_data["description"],
+                )
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect(f"{reverse('attendees:list')}?tab=vaciar-caja&edit_cash_drop={movement.id}")
+            messages.success(request, "Vaciado de caja actualizado.")
+            return redirect(f"{reverse('attendees:list')}?tab=vaciar-caja")
+        messages.error(request, "Corrige los datos del vaciado de caja.")
+
+        context = _dashboard_context(
+            request,
+            branch,
+            event,
+            form=attendee_form,
+            initial_tab="vaciar-caja",
+            cash_drop_form=form,
+            editing_cash_drop=movement,
+        )
+        return render(request, "attendees/list.html", context, status=400)
+
+    return redirect("attendees:list")
+
+
+@require_POST
+@login_required
+def attendee_cash_drop_delete(request, movement_id):
+    branch, event = _get_branch_and_event(request)
+    if not branch or not event:
+        return redirect("shared_ui:dashboard")
+    if not _ensure_cash_management_access(request, branch, event):
+        return redirect("shared_ui:dashboard")
+
+    movement = get_object_or_404(
+        CashMovement,
+        pk=movement_id,
+        branch=branch,
+        event=event,
+        module=CashMovement.MODULE_ENTRANCE,
+        movement_type=CashMovement.TYPE_CASH_DROP,
+    )
+    delete_cash_movement(movement=movement)
+    messages.success(request, "Vaciado de caja eliminado.")
+    return redirect(f"{reverse('attendees:list')}?tab=vaciar-caja")
 
 
 @require_POST
