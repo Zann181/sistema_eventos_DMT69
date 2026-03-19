@@ -5,17 +5,17 @@
 {% block page_title %}Catalogo de barra{% endblock %}
 
 {% block content %}
-<section class="panel-grid">
+<section class="catalog-management-layout">
     {% if can_manage_categories %}
     <article class="panel-card" id="categorias-sucursal">
         <div class="panel-header">
             <div>
                 <span class="eyebrow">Categorias</span>
-                <h4>CRUD de acceso por sucursal</h4>
+                <h4>Categorias de acceso</h4>
                 <p class="metric-helper mb-0">Estas categorias pertenecen a {{ branch.name }} y alimentan Entrada, Dia de evento y consumos asociados.</p>
             </div>
             <div class="d-flex gap-2 flex-wrap">
-                <a href="{% url 'catalog:list' %}#productos-globales" class="btn btn-outline-dark">Ir a productos</a>
+                <a href="{% url 'catalog:list' %}#productos-globales" class="btn btn-outline-dark">Ver productos</a>
             </div>
         </div>
 
@@ -123,39 +123,39 @@
         <div class="panel-header">
             <div>
                 <span class="eyebrow">Productos</span>
-                <h4>CRUD de productos</h4>
+                <h4>Productos globales</h4>
                 {% if event %}
                 <p class="metric-helper mb-0">Haz clic sobre un producto para editarlo. El listado muestra el estado actual para {{ event.name }}.</p>
                 {% endif %}
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 {% if can_manage_categories %}
-                <a href="#categorias-sucursal" class="btn btn-outline-dark">CRUD categorias</a>
+                <a href="#categorias-sucursal" class="btn btn-outline-dark">Ver categorias</a>
                 {% endif %}
                 {% if editing_product %}
                 <a href="{% url 'catalog:list' %}#productos-globales" class="btn btn-outline-dark">Nuevo producto</a>
                 {% endif %}
                 {% if can_configure_event_products %}
-                <a href="{% url 'sales:pos' %}?action=evento-productos" class="btn btn-outline-dark">Editar por evento</a>
+                <a href="{% url 'sales:pos' %}?action=evento-productos" class="btn btn-outline-dark">Configurar evento</a>
                 {% endif %}
             </div>
         </div>
-        <div class="row g-4">
-            <div class="{% if can_manage_events_configuration %}col-xl-8{% else %}col-12{% endif %}">
+        <div class="catalog-products-layout">
+            <div>
                 <div class="catalog-grid">
                     {% for row in product_rows %}
                     <article class="product-card">
                         <a
                             href="{% if can_manage_events_configuration %}{% url 'catalog:list' %}?edit_product={{ row.product.id }}#productos-globales{% else %}#{% endif %}"
-                            class="text-decoration-none text-reset d-block"
+                            class="product-card-main text-decoration-none text-reset"
                         >
                             {% if row.product.image %}
                             <img src="{{ row.product.image.url }}" alt="{{ row.product.name }}">
                             {% endif %}
-                            <div>
+                            <div class="product-card-copy">
                                 <h5>{{ row.product.name }}</h5>
                                 <p>{{ row.product.description|default:"Sin descripcion" }}</p>
-                                <div class="d-flex gap-2 flex-wrap">
+                                <div class="product-card-meta">
                                     <span>{% if row.product.is_active %}Activo{% else %}Inactivo{% endif %}</span>
                                     {% if event %}
                                     <span class="badge {% if row.is_enabled %}text-bg-success{% else %}text-bg-secondary{% endif %}">
@@ -164,7 +164,7 @@
                                     {% endif %}
                                 </div>
                                 {% if event %}
-                                <p class="mb-0 mt-2">
+                                <p class="product-card-price">
                                     Precio en {{ event.name }}:
                                     {% if row.event_price %}
                                     <strong data-number="{{ row.event_price }}" data-format="currency">$ {{ row.event_price }}</strong>
@@ -176,7 +176,7 @@
                             </div>
                         </a>
                         {% if can_manage_events_configuration %}
-                        <div class="d-flex gap-2 flex-wrap mt-3">
+                        <div class="product-card-actions">
                             <a href="{% url 'catalog:list' %}?edit_product={{ row.product.id }}#productos-globales" class="btn btn-outline-dark btn-sm">
                                 Editar
                             </a>
@@ -196,7 +196,7 @@
             </div>
 
             {% if can_manage_events_configuration %}
-            <div class="col-xl-4" id="producto-form">
+            <aside class="catalog-form-panel" id="producto-form">
                 <div class="quick-category-header mb-3">
                     <span class="eyebrow">{% if editing_product %}Edicion{% else %}Nuevo{% endif %}</span>
                     <h6 class="mb-0">{% if editing_product %}Actualizar producto{% else %}Registrar producto{% endif %}</h6>
@@ -238,7 +238,7 @@
                     </a>
                     {% endif %}
                 </form>
-            </div>
+            </aside>
             {% endif %}
         </div>
     </article>

@@ -1314,7 +1314,7 @@ class ModularArchitectureTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Category.objects.filter(branch=self.branch, name="Backstage").exists())
-        self.assertContains(response, "CRUD de acceso por sucursal")
+        self.assertContains(response, "Categorias de acceso")
 
     def test_branch_role_can_manage_catalog_crud_from_list(self):
         product = Product.objects.create(
@@ -1341,7 +1341,7 @@ class ModularArchitectureTests(TestCase):
         list_response = client.get(reverse("catalog:list"))
 
         self.assertEqual(list_response.status_code, 200)
-        self.assertContains(list_response, "CRUD de acceso por sucursal")
+        self.assertContains(list_response, "Categorias de acceso")
         self.assertContains(list_response, "Guardar producto")
         self.assertContains(list_response, "Ron")
 
@@ -2082,6 +2082,25 @@ class ModularArchitectureTests(TestCase):
         self.assertContains(response, "Solo se permite una sucursal principal en el sistema.")
         self.assertFalse(Branch.objects.filter(slug="otra-sucursal").exists())
 
+    def test_superuser_sees_django_admin_link_in_sidebar(self):
+        superuser = User.objects.create_superuser(
+            username="super-sidebar",
+            password="12345678@",
+            email="super-sidebar@test.com",
+        )
+        client = Client()
+        self.assertTrue(client.login(username="super-sidebar", password="12345678@"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.get(reverse("shared_ui:dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Admin Django")
+        self.assertContains(response, reverse("admin:index"))
+
     def test_event_admin_only_sees_assigned_events_and_not_branch_configuration(self):
         event_admin = User.objects.create_user(username="evento-admin", password="12345678@")
         UserBranchMembership.objects.create(
@@ -2390,8 +2409,8 @@ class ModularArchitectureTests(TestCase):
         list_response = client.get(reverse("catalog:list"))
 
         self.assertEqual(list_response.status_code, 200)
-        self.assertContains(list_response, "CRUD de acceso por sucursal")
-        self.assertContains(list_response, "Editar por evento")
+        self.assertContains(list_response, "Categorias de acceso")
+        self.assertContains(list_response, "Configurar evento")
         self.assertContains(list_response, self.event.name)
 
         create_response = client.post(

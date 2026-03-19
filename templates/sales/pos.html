@@ -29,7 +29,7 @@
             {% endif %}
             {% if can_manage_categories %}
             <a href="{% url 'catalog:list' %}#categorias-sucursal" class="btn btn-outline-dark">
-                <i class="fas fa-tags"></i> CRUD categorias
+                <i class="fas fa-tags"></i> Categorias
             </a>
             {% endif %}
             <a href="{% url 'sales:pos' %}?action=gastos" class="btn btn-outline-dark">
@@ -446,17 +446,13 @@
                                 {{ expense_form.amount }}
                                 {{ expense_form.amount.errors }}
                             </div>
+                            {% include "shared_ui/components/quick_amount_buttons.html" with targets="input[name='amount'], input[name='expense_payment_amount_1']" clear_targets="input[name='amount'], input[name='expense_payment_amount_1'], input[name='expense_payment_amount_2'], input[name='expense_payment_amount_3'], input[name='expense_payment_amount_4']" %}
                             {% include "shared_ui/components/payment_split_rows.html" with prefix="expense" %}
                             <div class="mb-3">
                                 <label class="form-label">{{ expense_form.description.label }}</label>
                                 {{ expense_form.description }}
                                 {{ expense_form.description.errors }}
                             </div>
-                            {% if can_manage_categories %}
-                            <a href="{% url 'catalog:list' %}#categorias-sucursal" class="btn btn-outline-light w-100 mb-3">
-                                <i class="fas fa-tags"></i> CRUD categorias
-                            </a>
-                            {% endif %}
                             {% if editing_expense %}
                             <a href="{% url 'sales:pos' %}?action=gastos" class="btn btn-link w-100 text-decoration-none">
                                 Cancelar edicion
@@ -541,16 +537,12 @@
                                 {{ cash_drop_form.amount }}
                                 {{ cash_drop_form.amount.errors }}
                             </div>
+                            {% include "shared_ui/components/quick_amount_buttons.html" with targets="input[name='amount']" clear_targets="input[name='amount']" %}
                             <div class="mb-3">
                                 <label class="form-label">{{ cash_drop_form.description.label }}</label>
                                 {{ cash_drop_form.description }}
                                 {{ cash_drop_form.description.errors }}
                             </div>
-                            {% if can_manage_categories %}
-                            <a href="{% url 'catalog:list' %}#categorias-sucursal" class="btn btn-outline-light w-100 mb-3">
-                                <i class="fas fa-tags"></i> CRUD categorias
-                            </a>
-                            {% endif %}
                             {% if editing_cash_drop %}
                             <a href="{% url 'sales:pos' %}?action=vaciar-caja" class="btn btn-link w-100 text-decoration-none">
                                 Cancelar edicion

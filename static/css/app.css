@@ -370,6 +370,12 @@ body {
     margin-bottom: 1rem;
 }
 
+.catalog-management-layout {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
 .flow-grid,
 .catalog-grid {
     display: grid;
@@ -378,6 +384,18 @@ body {
 
 .flow-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.catalog-grid {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    align-items: start;
+}
+
+.catalog-products-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.85fr);
+    gap: 1.5rem;
+    align-items: start;
 }
 
 .flow-card,
@@ -392,8 +410,39 @@ body {
 
 .product-card {
     display: grid;
-    grid-template-columns: 96px 1fr;
-    align-items: center;
+    gap: 1rem;
+    align-content: start;
+    height: 100%;
+}
+
+.product-card-main {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.product-card-copy {
+    display: grid;
+    gap: 0.8rem;
+    min-width: 0;
+}
+
+.product-card-copy h5,
+.product-card-price {
+    margin: 0;
+}
+
+.product-card-meta,
+.product-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.catalog-form-panel {
+    position: sticky;
+    top: 1rem;
 }
 
 .product-card img {
@@ -1857,6 +1906,7 @@ textarea::placeholder {
 
     .metrics-grid,
     .panel-grid,
+    .catalog-products-layout,
     .sales-pos-grid,
     .sales-layout,
     .sales-bottom-grid,
@@ -1899,6 +1949,10 @@ textarea::placeholder {
 
     .sales-product-grid {
         grid-template-columns: 1fr;
+    }
+
+    .catalog-form-panel {
+        position: static;
     }
 
     .topbar {

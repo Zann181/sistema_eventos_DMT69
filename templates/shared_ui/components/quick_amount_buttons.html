@@ -1,0 +1,16 @@
+<div
+    class="sales-quick-payments quick-amounts mb-3"
+    data-quick-fill-group
+    data-quick-fill-targets="{{ targets }}"
+    {% if clear_targets %}data-quick-clear-targets="{{ clear_targets }}"{% endif %}
+>
+    <span class="eyebrow">{{ eyebrow|default:"Monto rapido" }}</span>
+    <div class="sales-quick-payment-buttons">
+        <button type="button" class="btn btn-outline-dark btn-sm" data-quick-fill-amount="5000">5.000</button>
+        <button type="button" class="btn btn-outline-dark btn-sm" data-quick-fill-amount="10000">10.000</button>
+        <button type="button" class="btn btn-outline-dark btn-sm" data-quick-fill-amount="20000">20.000</button>
+        <button type="button" class="btn btn-outline-dark btn-sm" data-quick-fill-amount="50000">50.000</button>
+        <button type="button" class="btn btn-outline-dark btn-sm" data-quick-fill-amount="100000">100.000</button>
+        <button type="button" class="btn btn-outline-dark btn-sm" data-quick-fill-clear>Limpiar</button>
+    </div>
+</div>
