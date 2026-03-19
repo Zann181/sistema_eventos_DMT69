@@ -1290,6 +1290,48 @@ class ModularArchitectureTests(TestCase):
         self.assertContains(response, "Editar categoria", status_code=400)
         self.assertContains(response, 'data-open-modal="categorias"', html=False, status_code=400)
 
+    def test_catalog_category_create_works_for_admin(self):
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.post(
+            reverse("catalog:category_create"),
+            {
+                "name": "Backstage",
+                "included_consumptions": "3",
+                "price": "70000",
+                "description": "Categoria administrada desde catalogo",
+                "is_active": "on",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Category.objects.filter(branch=self.branch, name="Backstage").exists())
+        self.assertContains(response, "CRUD de acceso por sucursal")
+
+    def test_catalog_category_delete_deactivates_when_attendees_exist(self):
+        client = Client()
+        self.assertTrue(client.login(username="operador", password="12345678"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.post(
+            reverse("catalog:category_delete", args=[self.category.id]),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.category.refresh_from_db()
+        self.assertFalse(self.category.is_active)
+        self.assertContains(response, "inactivada porque ya tiene asistentes asociados")
+
     def test_dashboard_shows_access_analytics_only_there(self):
         client = Client()
         self.assertTrue(client.login(username="operador", password="12345678"))
@@ -1691,7 +1733,7 @@ class ModularArchitectureTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, "Ya existe un asistente con esa cedula en este evento.", status_code=400)
 
-    def test_entrance_role_can_create_category_from_attendees_module(self):
+    def test_entrance_role_cannot_create_category_from_attendees_module(self):
         entrance = User.objects.create_user(username="entrada-cat", password="12345678@")
         UserBranchMembership.objects.create(
             user=entrance,
@@ -1726,7 +1768,35 @@ class ModularArchitectureTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(Category.objects.filter(branch=self.branch, name="Taquilla").exists())
+        self.assertFalse(Category.objects.filter(branch=self.branch, name="Taquilla").exists())
+        self.assertContains(response, "Solo los administradores pueden gestionar categorias.")
+
+    def test_attendees_category_crud_shortcuts_are_hidden_for_entrance_role(self):
+        entrance = User.objects.create_user(username="entrada-crud", password="12345678@")
+        UserBranchMembership.objects.create(
+            user=entrance,
+            branch=self.branch,
+            role=UserBranchMembership.ROLE_ENTRANCE,
+            is_active=True,
+        )
+        UserEventAssignment.objects.create(
+            user=entrance,
+            branch=self.branch,
+            event=self.event,
+            role=UserBranchMembership.ROLE_ENTRANCE,
+            is_active=True,
+        )
+        client = Client()
+        self.assertTrue(client.login(username="entrada-crud", password="12345678@"))
+        session = client.session
+        session["current_branch_id"] = self.branch.id
+        session["current_event_id"] = self.event.id
+        session.save()
+
+        response = client.get(reverse("attendees:list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "CRUD categorias")
 
     def test_entrance_role_sees_only_dashboard_and_entrada_menu(self):
         entrance = User.objects.create_user(username="entrada1", password="12345678@")
@@ -2185,6 +2255,7 @@ class ModularArchitectureTests(TestCase):
         list_response = client.get(reverse("catalog:list"))
 
         self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "CRUD de acceso por sucursal")
         self.assertContains(list_response, "Editar por evento")
         self.assertContains(list_response, self.event.name)
 

@@ -39,7 +39,7 @@ DB_USER=root
 Recrear una base limpia:
 
 ```powershell
-venv\Scripts\python -c "import pymysql; conn=pymysql.connect(host='127.0.0.1', user='root', password='12345678', port=3306, autocommit=True); cur=conn.cursor(); cur.execute('DROP DATABASE IF EXISTS evento_db_clean_20260316'); cur.execute('CREATE DATABASE evento_db_clean_20260316 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'); cur.close(); conn.close()"
+venv\Scripts\python -c "import pymysql; conn=pymysql.connect(host='127.0.0.1', user='tu_usuario_mysql', password='tu_password_mysql', port=3306, autocommit=True); cur=conn.cursor(); cur.execute('DROP DATABASE IF EXISTS evento_db_clean_20260316'); cur.execute('CREATE DATABASE evento_db_clean_20260316 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'); cur.close(); conn.close()"
 venv\Scripts\python manage.py migrate
 ```
 

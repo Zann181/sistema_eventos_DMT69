@@ -27,6 +27,11 @@
                 <i class="fas fa-sliders"></i> Configurar evento
             </a>
             {% endif %}
+            {% if can_manage_categories %}
+            <a href="{% url 'catalog:list' %}#categorias-sucursal" class="btn btn-outline-dark">
+                <i class="fas fa-tags"></i> CRUD categorias
+            </a>
+            {% endif %}
             <a href="{% url 'sales:pos' %}?action=gastos" class="btn btn-outline-dark">
                 <i class="fas fa-receipt"></i> Gasto
             </a>
@@ -389,6 +394,11 @@
                         {{ expense_form.description }}
                         {{ expense_form.description.errors }}
                     </div>
+                    {% if can_manage_categories %}
+                    <a href="{% url 'catalog:list' %}#categorias-sucursal" class="btn btn-outline-light w-100 mb-3">
+                        <i class="fas fa-tags"></i> CRUD categorias
+                    </a>
+                    {% endif %}
                     <button type="submit" class="btn btn-outline-dark w-100">
                         <i class="fas fa-receipt"></i> Guardar gasto
                     </button>
@@ -421,6 +431,11 @@
                         {{ cash_drop_form.description }}
                         {{ cash_drop_form.description.errors }}
                     </div>
+                    {% if can_manage_categories %}
+                    <a href="{% url 'catalog:list' %}#categorias-sucursal" class="btn btn-outline-light w-100 mb-3">
+                        <i class="fas fa-tags"></i> CRUD categorias
+                    </a>
+                    {% endif %}
                     <button type="submit" class="btn btn-outline-dark w-100">
                         <i class="fas fa-vault"></i> Guardar movimiento
                     </button>

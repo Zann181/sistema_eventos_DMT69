@@ -6,7 +6,120 @@
 
 {% block content %}
 <section class="panel-grid">
-    <article class="panel-card">
+    {% if can_manage_categories %}
+    <article class="panel-card" id="categorias-sucursal">
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">Categorias</span>
+                <h4>CRUD de acceso por sucursal</h4>
+                <p class="metric-helper mb-0">Estas categorias pertenecen a {{ branch.name }} y alimentan Entrada, Dia de evento y consumos asociados.</p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="{% url 'catalog:list' %}#productos-globales" class="btn btn-outline-dark">Ir a productos</a>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-xl-4">
+                <form
+                    method="post"
+                    action="{% if editing_category %}{% url 'catalog:category_update' editing_category.id %}{% else %}{% url 'catalog:category_create' %}{% endif %}"
+                    class="stack-form"
+                >
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">{{ category_form.name.label }}</label>
+                        {{ category_form.name }}
+                        {{ category_form.name.errors }}
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">{{ category_form.included_consumptions.label }}</label>
+                            {{ category_form.included_consumptions }}
+                            {{ category_form.included_consumptions.errors }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">{{ category_form.price.label }}</label>
+                            {{ category_form.price }}
+                            {{ category_form.price.errors }}
+                        </div>
+                    </div>
+                    <div class="mb-3 mt-3">
+                        <label class="form-label">{{ category_form.description.label }}</label>
+                        {{ category_form.description }}
+                        {{ category_form.description.errors }}
+                    </div>
+                    <div class="form-check mb-3">
+                        {{ category_form.is_active }}
+                        <label class="form-check-label" for="{{ category_form.is_active.id_for_label }}">
+                            {{ category_form.is_active.label }}
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-dark w-100">
+                        {% if editing_category %}Guardar cambios{% else %}Guardar categoria{% endif %}
+                    </button>
+                    {% if editing_category %}
+                    <a href="{% url 'catalog:list' %}#categorias-sucursal" class="btn btn-link w-100 text-decoration-none">
+                        Cancelar edicion
+                    </a>
+                    {% endif %}
+                </form>
+            </div>
+
+            <div class="col-xl-8">
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Categoria</th>
+                                <th>Consumiciones</th>
+                                <th>Precio</th>
+                                <th>Estado</th>
+                                <th>Detalle</th>
+                                <th class="text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for category in branch_categories %}
+                            <tr>
+                                <td><strong>{{ category.name }}</strong></td>
+                                <td data-number="{{ category.included_consumptions|default:'0' }}">{{ category.included_consumptions|default:"0" }}</td>
+                                <td data-number="{{ category.price|default:'0' }}" data-format="currency">$ {{ category.price|default:"0" }}</td>
+                                <td>
+                                    <span class="badge {% if category.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                        {% if category.is_active %}Activa{% else %}Inactiva{% endif %}
+                                    </span>
+                                </td>
+                                <td>{{ category.description|default:"-" }}</td>
+                                <td class="text-end">
+                                    <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                        <a
+                                            href="{% url 'catalog:list' %}?edit_category={{ category.id }}#categorias-sucursal"
+                                            class="btn btn-outline-dark btn-sm"
+                                        >
+                                            Editar
+                                        </a>
+                                        <form method="post" action="{% url 'catalog:category_delete' category.id %}" onsubmit="return confirm('Eliminar esta categoria? Si ya tiene asistentes, se inactivara para conservar el historial.');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                Eliminar
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="6">No hay categorias configuradas todavia.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </article>
+    {% endif %}
+
+    <article class="panel-card" id="productos-globales">
         <div class="panel-header">
             <div>
                 <span class="eyebrow">Productos</span>
@@ -16,6 +129,9 @@
                 {% endif %}
             </div>
             <div class="d-flex gap-2 flex-wrap">
+                {% if can_manage_categories %}
+                <a href="#categorias-sucursal" class="btn btn-outline-dark">CRUD categorias</a>
+                {% endif %}
                 <a href="{% url 'catalog:create' %}" class="btn btn-dark">Nuevo producto</a>
                 {% if can_configure_event_products %}
                 <a href="{% url 'sales:pos' %}?action=evento-productos" class="btn btn-outline-dark">Editar por evento</a>

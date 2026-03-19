@@ -12,6 +12,7 @@ urlpatterns = [
     path("cash-drop/new/", views.attendee_cash_drop_create, name="cash_drop_create"),
     path("categories/new/", views.attendee_category_create, name="category_create"),
     path("categories/<int:category_id>/update/", views.attendee_category_update, name="category_update"),
+    path("categories/<int:category_id>/delete/", views.attendee_category_delete, name="category_delete"),
     path("check-in/", views.attendee_check_in, name="check_in"),
     path("check-in/preview/", views.attendee_check_in_preview, name="check_in_preview"),
     path("check-in/confirm/", views.attendee_confirm_check_in, name="confirm_check_in"),

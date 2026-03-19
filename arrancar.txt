@@ -4,7 +4,7 @@ Base de datos por defecto:
 DB_NAME=evento_db_clean_20260316
 
 Recrear base limpia:
-venv\Scripts\python -c "import pymysql; conn=pymysql.connect(host='127.0.0.1', user='root', password='12345678', port=3306, autocommit=True); cur=conn.cursor(); cur.execute('DROP DATABASE IF EXISTS evento_db_clean_20260316'); cur.execute('CREATE DATABASE evento_db_clean_20260316 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'); cur.close(); conn.close()"
+venv\Scripts\python -c "import pymysql; conn=pymysql.connect(host='127.0.0.1', user='tu_usuario_mysql', password='tu_password_mysql', port=3306, autocommit=True); cur=conn.cursor(); cur.execute('DROP DATABASE IF EXISTS evento_db_clean_20260316'); cur.execute('CREATE DATABASE evento_db_clean_20260316 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'); cur.close(); conn.close()"
 
 Aplicar migraciones:
 venv\Scripts\python manage.py migrate
@@ -19,5 +19,28 @@ Opcional para previews publicos:
 $env:WHATSAPP_MEDIA_BASE_URL="https://tu-subdominio.ngrok-free.app"
 $env:EMAIL_MEDIA_BASE_URL="https://tu-subdominio.ngrok-free.app"
 
+Correo en desarrollo sin SMTP real:
+$env:EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend"
+
+Correo por SMTP sin AUTH:
+$env:EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
+$env:EMAIL_HOST="mail.tu-servidor.com"
+$env:EMAIL_PORT="25"
+$env:EMAIL_USE_TLS="False"
+$env:EMAIL_USE_SSL="False"
+$env:EMAIL_HOST_USER=""
+$env:EMAIL_HOST_PASSWORD=""
+$env:DEFAULT_FROM_EMAIL="EVENT <no-reply@tu-dominio.com>"
+
+Correo por Gmail con AUTH:
+$env:EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
+$env:EMAIL_HOST="smtp.gmail.com"
+$env:EMAIL_PORT="587"
+$env:EMAIL_USE_TLS="True"
+$env:EMAIL_USE_SSL="False"
+$env:EMAIL_HOST_USER="tu_correo@gmail.com"
+$env:EMAIL_HOST_PASSWORD="tu_app_password"
+$env:DEFAULT_FROM_EMAIL="EVENT <tu_correo@gmail.com>"
+
 Credenciales locales:
-motas 12345678@
+usuario_local tu_password_local

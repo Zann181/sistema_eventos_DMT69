@@ -17,6 +17,7 @@
   };
   const CONTENT_TABS = new Set(["scanner", "lista", "crear"]);
   const MODAL_TABS = new Set(["categorias", "evento-dia", "gastos", "vaciar-caja"]);
+  const RETURN_TABS = new Set([...CONTENT_TABS, ...MODAL_TABS]);
 
   let html5QrCode = null;
   let isScanning = false;
@@ -403,6 +404,11 @@
     return MODAL_TABS.has(normalized) ? normalized : "";
   }
 
+  function normalizeReturnTab(tabName) {
+    const normalized = String(tabName || "").replace(/^#/, "");
+    return RETURN_TABS.has(normalized) ? normalized : "";
+  }
+
   function getStoredContentTab() {
     return normalizeContentTab(localStorage.getItem("entrada-active-tab"));
   }
@@ -479,11 +485,15 @@
   }
 
   function openCategoryModal(returnTab = "crear") {
+    const modalElement = document.getElementById("categoryModal");
+    if (!modalElement) {
+      return;
+    }
     const returnField = document.querySelector("[data-category-return-tab]");
     if (returnField) {
-      returnField.value = normalizeContentTab(returnTab) || getPreferredContentTab();
+      returnField.value = normalizeReturnTab(returnTab) || getPreferredContentTab();
     }
-    bootstrap.Modal.getOrCreateInstance(document.getElementById("categoryModal")).show();
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
   }
 
   function openEventDayModal() {
@@ -654,6 +664,15 @@
 
   function bindCategoryModal() {
     document.getElementById("open-category-modal-btn")?.addEventListener("click", () => openCategoryModal("crear"));
+    document.querySelectorAll("[data-open-category-modal]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const currentModalElement = button.closest(".modal");
+        if (currentModalElement) {
+          bootstrap.Modal.getOrCreateInstance(currentModalElement).hide();
+        }
+        window.setTimeout(() => openCategoryModal(button.dataset.returnTab || getPreferredContentTab()), 180);
+      });
+    });
     bindModalCleanup("categoryModal", "categorias");
     bindModalCleanup("eventDayModal", "evento-dia");
     bindModalCleanup("expenseModal", "gastos");

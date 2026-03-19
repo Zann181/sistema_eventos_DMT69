@@ -11,6 +11,7 @@ def build_permission_flags(user, branch=None, event=None, role=None):
     effective_role = role if role is not None else get_effective_role(user, branch, event)
     can_manage_branch_configuration = bool(getattr(user, "is_authenticated", False) and is_global_admin(user))
     can_manage_events_configuration = effective_role in {"admin", UserBranchMembership.ROLE_EVENT_ADMIN}
+    can_manage_categories_flag = can_manage_events_configuration
     can_access_attendees_flag = effective_role in {
         "admin",
         UserBranchMembership.ROLE_EVENT_ADMIN,
@@ -28,6 +29,7 @@ def build_permission_flags(user, branch=None, event=None, role=None):
         "can_manage_configuration": can_manage_branch_configuration or can_manage_events_configuration,
         "can_manage_branch_configuration": can_manage_branch_configuration,
         "can_manage_events_configuration": can_manage_events_configuration,
+        "can_manage_categories": can_manage_categories_flag,
         "can_access_attendees": can_access_attendees_flag,
         "can_access_sales": can_access_sales_flag,
         "can_access_catalog": can_access_catalog_flag,
@@ -63,6 +65,10 @@ def user_can_manage_branch(user, branch=None):
 
 def user_can_manage_events(user, branch=None, event=None):
     return build_permission_flags(user, branch, event)["can_manage_events_configuration"]
+
+
+def user_can_manage_categories(user, branch=None, event=None):
+    return build_permission_flags(user, branch, event)["can_manage_categories"]
 
 
 def user_can_manage_staff(user, branch=None, event=None):

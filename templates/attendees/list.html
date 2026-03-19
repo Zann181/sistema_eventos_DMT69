@@ -140,6 +140,7 @@
                                     <label class="form-label">Categoria</label>
                                     <div class="category-select-row">
                                         {{ form.category }}
+                                        {% if can_manage_categories %}
                                         <button
                                             type="button"
                                             class="btn btn-outline-dark btn-sm"
@@ -148,6 +149,7 @@
                                         >
                                             <i class="fas fa-plus"></i> Categoria
                                         </button>
+                                        {% endif %}
                                     </div>
                                     {{ form.category.errors }}
                                 </div>
@@ -213,6 +215,7 @@
     </div>
 </div>
 
+{% if can_manage_categories %}
 <div class="modal fade" id="categoryModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content neon-modal">
@@ -288,12 +291,21 @@
                                     </span>
                                 </td>
                                 <td class="text-end">
-                                    <a
-                                        href="{% url 'attendees:list' %}?tab={{ initial_tab|default:'crear' }}&modal=categorias&edit_category={{ category.id }}"
-                                        class="btn btn-outline-dark btn-sm"
-                                    >
-                                        Editar
-                                    </a>
+                                    <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                        <a
+                                            href="{% url 'attendees:list' %}?tab={{ initial_tab|default:'crear' }}&modal=categorias&edit_category={{ category.id }}"
+                                            class="btn btn-outline-dark btn-sm"
+                                        >
+                                            Editar
+                                        </a>
+                                        <form method="post" action="{% url 'attendees:category_delete' category.id %}" onsubmit="return confirm('Eliminar esta categoria? Si ya tiene asistentes, se inactivara para conservar el historial.');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="return_tab" value="{{ initial_tab|default:'crear' }}">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                Eliminar
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             {% empty %}
@@ -306,6 +318,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <div class="modal fade" id="eventDayModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -380,6 +393,11 @@
                         {{ expense_form.description }}
                         {{ expense_form.description.errors }}
                     </div>
+                    {% if can_manage_categories %}
+                    <button type="button" class="btn btn-outline-light w-100 mb-3" data-open-category-modal data-return-tab="gastos">
+                        <i class="fas fa-tags"></i> CRUD categorias
+                    </button>
+                    {% endif %}
                     <button type="submit" class="btn btn-outline-dark w-100">
                         <i class="fas fa-receipt"></i> Guardar gasto
                     </button>
@@ -412,6 +430,11 @@
                         {{ cash_drop_form.description }}
                         {{ cash_drop_form.description.errors }}
                     </div>
+                    {% if can_manage_categories %}
+                    <button type="button" class="btn btn-outline-light w-100 mb-3" data-open-category-modal data-return-tab="vaciar-caja">
+                        <i class="fas fa-tags"></i> CRUD categorias
+                    </button>
+                    {% endif %}
                     <button type="submit" class="btn btn-outline-dark w-100">
                         <i class="fas fa-vault"></i> Guardar movimiento
                     </button>

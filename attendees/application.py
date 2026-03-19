@@ -20,3 +20,15 @@ def get_attendee_for_branch(branch, event, code_or_cc):
     queryset = Attendee.objects.filter(branch=branch, event=event).select_related("category")
     return queryset.filter(qr_code=code_or_cc).first() or queryset.filter(cc=code_or_cc).first()
 
+
+@transaction.atomic
+def delete_branch_category(category):
+    if category.attendees.exists():
+        if category.is_active:
+            category.is_active = False
+            category.save(update_fields=["is_active"])
+            return "deactivated"
+        return "blocked"
+
+    category.delete()
+    return "deleted"

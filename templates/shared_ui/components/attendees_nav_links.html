@@ -4,4 +4,6 @@
 <a href="{% url 'attendees:list' %}?tab=evento-dia" class="nav-link"><i class="fa-solid fa-bolt"></i><span>Dia de evento</span></a>
 <a href="{% url 'attendees:list' %}?tab=gastos" class="nav-link"><i class="fa-solid fa-receipt"></i><span>Gastos</span></a>
 <a href="{% url 'attendees:list' %}?tab=vaciar-caja" class="nav-link"><i class="fa-solid fa-vault"></i><span>Vaciar caja</span></a>
-<a href="{% url 'attendees:list' %}?tab=categorias" class="nav-link"><i class="fa-solid fa-tags"></i><span>Categorias</span></a>
+{% if can_manage_categories %}
+<a href="{% url 'catalog:list' %}#categorias-sucursal" class="nav-link"><i class="fa-solid fa-tags"></i><span>Categorias</span></a>
+{% endif %}
