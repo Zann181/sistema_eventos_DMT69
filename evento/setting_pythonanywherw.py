@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
-    "django-insecure-w!+v6uela@#b+$)8^@95n1f1v&8b(*txblina)i2rqorgkf()w",
+    "change-me-in-pythonanywhere",
 )
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
@@ -121,12 +121,12 @@ WSGI_APPLICATION = "evento.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": os.environ.get("DB_NAME", "MotasEvent$evento_db"),
-        "USER": os.environ.get("DB_USER", "MotasEvent"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", "Motas696@"),
+        "NAME": os.environ.get("DB_NAME", "tu_usuario$tu_base"),
+        "USER": os.environ.get("DB_USER", "tu_usuario"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", ""),
         "HOST": os.environ.get(
             "DB_HOST",
-            "MotasEvent.mysql.pythonanywhere-services.com",
+            "tu_usuario.mysql.pythonanywhere-services.com",
         ),
         "PORT": "3306",
     }
@@ -191,23 +191,16 @@ EMAIL_USE_TLS = str(os.environ.get("EMAIL_USE_TLS", "True")).strip().lower() in 
     "on",
 }
 
-EMAIL_USE_SSL = str(os.environ.get("EMAIL_USE_SSL", "False")).strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "zamamotas@gmail.com")
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 
 EMAIL_HOST_PASSWORD = os.environ.get(
     "EMAIL_HOST_PASSWORD",
-    "uxxg iyhg rgsb xbmw",
+    "",
 )
 
 DEFAULT_FROM_EMAIL = os.environ.get(
     "DEFAULT_FROM_EMAIL",
-    "EVENT <zamamotas@gmail.com>",
+    "EVENT <no-reply@tu-dominio.com>",
 )
 
 EMAIL_MEDIA_BASE_URL = os.environ.get("EMAIL_MEDIA_BASE_URL", "")

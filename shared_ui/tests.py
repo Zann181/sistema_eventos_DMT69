@@ -3,7 +3,7 @@ from io import BytesIO
 from pathlib import Path
 import email.policy
 import smtplib
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.conf import settings
 from django.contrib.auth.models import Group, User
@@ -2992,7 +2992,12 @@ class ModularArchitectureTests(TestCase):
         self.assertIn("Content-ID: <event_flyer_inline>", mime_dump)
 
     def test_send_attendee_ticket_email_retries_without_smtp_auth(self):
-        with patch("ticketing.application.get_connection", return_value=object()) as get_connection_mock, patch(
+        primary_connection = MagicMock()
+        fallback_connection = MagicMock()
+        with patch(
+            "ticketing.application.get_connection",
+            side_effect=[primary_connection, fallback_connection],
+        ) as get_connection_mock, patch(
             "ticketing.application.RelatedEmailMultiAlternatives.send",
             side_effect=[
                 smtplib.SMTPNotSupportedError("SMTP AUTH extension not supported by server."),
@@ -3003,7 +3008,24 @@ class ModularArchitectureTests(TestCase):
 
         self.assertTrue(sent)
         self.assertEqual(error, "Correo enviado.")
-        get_connection_mock.assert_called_once_with(username="", password="")
+        self.assertEqual(get_connection_mock.call_count, 2)
+        self.assertEqual(get_connection_mock.call_args_list[1].kwargs, {"username": "", "password": ""})
+        self.assertEqual(send_mock.call_count, 2)
+
+    def test_send_attendee_ticket_email_retries_once_on_network_error(self):
+        primary_connection = MagicMock()
+        retry_connection = MagicMock()
+        with patch(
+            "ticketing.application.get_connection",
+            side_effect=[primary_connection, retry_connection],
+        ), patch(
+            "ticketing.application.RelatedEmailMultiAlternatives.send",
+            side_effect=[OSError(101, "Network is unreachable"), 1],
+        ) as send_mock:
+            sent, error = send_attendee_ticket_email(self.attendee)
+
+        self.assertTrue(sent)
+        self.assertEqual(error, "Correo enviado.")
         self.assertEqual(send_mock.call_count, 2)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

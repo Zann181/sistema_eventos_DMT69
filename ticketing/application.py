@@ -766,17 +766,35 @@ def send_attendee_ticket_email(attendee):
             )
         return email
 
+    def send_email_once(connection=None):
+        email_message = build_email(connection=connection)
+        backend = email_message.connection or get_connection()
+        email_message.connection = backend
+        try:
+            backend.open()
+            email_message.send()
+        finally:
+            try:
+                backend.close()
+            except Exception:
+                pass
+
     try:
-        build_email().send()
+        send_email_once()
     except smtplib.SMTPException as exc:
         message = str(exc)
         if not isinstance(exc, smtplib.SMTPNotSupportedError) and "auth extension not supported" not in message.lower():
             return False, message
         try:
             fallback_connection = get_connection(username="", password="")
-            build_email(connection=fallback_connection).send()
+            send_email_once(connection=fallback_connection)
         except Exception as fallback_exc:
             return False, str(fallback_exc)
+    except OSError as exc:
+        try:
+            send_email_once()
+        except Exception as retry_exc:
+            return False, str(retry_exc)
     except Exception as exc:
         return False, str(exc)
 
